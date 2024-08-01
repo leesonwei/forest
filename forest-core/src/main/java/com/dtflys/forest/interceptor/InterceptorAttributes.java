@@ -4,6 +4,7 @@ import com.dtflys.forest.mapping.MappingTemplate;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 拦截器属性类，用于封装通过注解传入的拦截器属性
@@ -14,27 +15,23 @@ public class InterceptorAttributes {
 
     private final Map<String, Object> attributeTemplates;
 
-    private Map<String, Object> attributes = new HashMap();
+    private Map<String, Object> attributes = new ConcurrentHashMap<>();
 
     public InterceptorAttributes(Class interceptorClass, Map<String, Object> attributeTemplates) {
         this.interceptorClass = interceptorClass;
         this.attributeTemplates = attributeTemplates;
     }
 
-    public void addAttributeTemplate(String attributeName, Object template) {
-        attributeTemplates.put(attributeName, template);
-    }
-
     public Map<String, Object> render(Object[] args) {
         for (Map.Entry<String, Object> entry : attributeTemplates.entrySet()) {
-            String name = entry.getKey();
+            final String name = entry.getKey();
             Object value = entry.getValue();
             if (value instanceof MappingTemplate) {
                 value = ((MappingTemplate) value).render(args);
             } else if (value instanceof MappingTemplate[]) {
-                MappingTemplate[] templates = (MappingTemplate[]) value;
-                int len = templates.length;
-                String[] strArray = new String[len];
+                final MappingTemplate[] templates = (MappingTemplate[]) value;
+                final int len = templates.length;
+                final String[] strArray = new String[len];
                 for (int i = 0; i < len; i++) {
                     strArray[i] = templates[i].render(args);
                 }
@@ -63,5 +60,11 @@ public class InterceptorAttributes {
 
     public Class getInterceptorClass() {
         return interceptorClass;
+    }
+
+    public InterceptorAttributes clone() {
+        final InterceptorAttributes newAttrs = new InterceptorAttributes(interceptorClass, attributeTemplates);
+        newAttrs.attributes = new ConcurrentHashMap<>();
+        return newAttrs;
     }
 }

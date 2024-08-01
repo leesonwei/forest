@@ -1,6 +1,7 @@
 package com.dtflys.test.interceptor;
 
 import com.alibaba.fastjson.JSON;
+import com.dtflys.forest.converter.ForestEncoder;
 import com.dtflys.forest.exceptions.ForestRuntimeException;
 import com.dtflys.forest.http.ForestRequest;
 import com.dtflys.forest.http.ForestResponse;
@@ -31,8 +32,12 @@ public class BaseInterceptor implements Interceptor {
     }
 
     @Override
-    public void onError(ForestRuntimeException ex, ForestRequest request, ForestResponse response) {
+    public byte[] onBodyEncode(ForestRequest request, ForestEncoder encoder, byte[] encodedData) {
+        return Interceptor.super.onBodyEncode(request, encoder, encodedData);
+    }
 
+    @Override
+    public void onError(ForestRuntimeException ex, ForestRequest request, ForestResponse response) {
     }
 
     @Override

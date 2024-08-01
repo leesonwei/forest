@@ -3,10 +3,11 @@ package com.dtflys.test.converter;
 import com.alibaba.fastjson.TypeReference;
 import com.dtflys.forest.config.ForestConfiguration;
 import com.dtflys.forest.converter.auto.DefaultAutoConverter;
-import com.dtflys.forest.converter.xml.ForestJaxbConverter;
 import com.dtflys.forest.utils.ForestDataType;
+import org.apache.commons.io.input.ReaderInputStream;
 import org.junit.Test;
 
+import java.io.StringReader;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
@@ -20,7 +21,7 @@ import static junit.framework.Assert.*;
 public class TestAutoConverter {
 
     private DefaultAutoConverter getConverter() {
-        ForestConfiguration configuration = ForestConfiguration.configuration();
+        ForestConfiguration configuration = ForestConfiguration.createConfiguration();
         DefaultAutoConverter autoConverter = (DefaultAutoConverter) configuration.getConverterMap().get(ForestDataType.AUTO);
         assertNotNull(autoConverter);
         return autoConverter;
@@ -37,6 +38,17 @@ public class TestAutoConverter {
     }
 
     @Test
+    public void testAutoJsonObjectFromInputStream() {
+        DefaultAutoConverter autoConverter = getConverter();
+        String text = "{\"username\": \"foo\", \"password\": \"bar\"}";
+        Map<String, Object> map = autoConverter.convertToJavaObject(new ReaderInputStream(new StringReader(text)), Map.class);
+        assertNotNull(map);
+        assertEquals("foo", map.get("username"));
+        assertEquals("bar", map.get("password"));
+    }
+
+
+    @Test
     public void testAutoJsonArray() {
         DefaultAutoConverter autoConverter = getConverter();
         String text = "    [{\"username\": \"foo\", \"password\": \"bar\"}, {\"username\": \"xxx\", \"password\": \"yyy\"}] ";
@@ -50,6 +62,21 @@ public class TestAutoConverter {
     }
 
 
+    @Test
+    public void testAutoJsonArrayFromInputStream() {
+        DefaultAutoConverter autoConverter = getConverter();
+        String text = "    [{\"username\": \"foo\", \"password\": \"bar\"}, {\"username\": \"xxx\", \"password\": \"yyy\"}] ";
+        List<Map<String, Object>> list = autoConverter.convertToJavaObject(new ReaderInputStream(new StringReader(text)), new TypeReference<List<Map<String, Object>>>() {}.getType());
+        assertNotNull(list);
+        assertEquals(2, list.size());
+        assertEquals("foo", list.get(0).get("username"));
+        assertEquals("bar", list.get(0).get("password"));
+        assertEquals("xxx", list.get(1).get("username"));
+        assertEquals("yyy", list.get(1).get("password"));
+    }
+
+
+/*
     @Test
     public void testAutoXml() {
         DefaultAutoConverter autoConverter = getConverter();
@@ -68,6 +95,7 @@ public class TestAutoConverter {
         assertEquals("Peter", user.getName());
         assertEquals(Integer.valueOf(32), user.getAge());
     }
+*/
 
     @Test
     public void testAutoNumber() {

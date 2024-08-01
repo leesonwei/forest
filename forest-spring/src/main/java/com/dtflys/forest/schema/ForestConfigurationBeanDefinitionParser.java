@@ -1,6 +1,9 @@
 package com.dtflys.forest.schema;
 
+import com.dtflys.forest.http.ForestAsyncMode;
+import com.dtflys.forest.interceptor.SpringInterceptorFactory;
 import com.dtflys.forest.logging.ForestLogHandler;
+import com.dtflys.forest.reflection.SpringForestObjectFactory;
 import com.dtflys.forest.ssl.SpringSSLKeyStore;
 import com.dtflys.forest.utils.ClientFactoryBeanUtils;
 import com.dtflys.forest.config.ForestConfiguration;
@@ -12,6 +15,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.ConstructorArgumentValues;
+import org.springframework.beans.factory.support.BeanDefinitionBuilder;
+import org.springframework.beans.factory.support.BeanDefinitionRegistry;
 import org.springframework.beans.factory.support.GenericBeanDefinition;
 import org.springframework.beans.factory.support.ManagedMap;
 import org.springframework.beans.factory.support.RootBeanDefinition;
@@ -30,10 +35,10 @@ import java.util.Map;
  * @since 2017-04-21 14:49
  */
 public class ForestConfigurationBeanDefinitionParser implements BeanDefinitionParser {
-    private static Logger log = LoggerFactory.getLogger(ForestConfigurationBeanDefinitionParser.class);
+    private final static Logger LOG = LoggerFactory.getLogger(ForestConfigurationBeanDefinitionParser.class);
 
-    private final static Class configurationBeanClass = ForestConfiguration.class;
-    private final static Class sslKeyStoreBeanClass = SpringSSLKeyStore.class;
+    private final static Class<?> FOREST_CONFIGURATION_CLASS = ForestConfiguration.class;
+    private final static Class<?> SPRING_SSL_KEY_STORE_CLASS = SpringSSLKeyStore.class;
 
 
     public ForestConfigurationBeanDefinitionParser() {
@@ -42,20 +47,26 @@ public class ForestConfigurationBeanDefinitionParser implements BeanDefinitionPa
     @Override
     public BeanDefinition parse(Element element, ParserContext parserContext) {
         RootBeanDefinition beanDefinition = new RootBeanDefinition();
-
-        beanDefinition.setBeanClass(configurationBeanClass);
+        beanDefinition.setBeanClass(FOREST_CONFIGURATION_CLASS);
         beanDefinition.setLazyInit(false);
         beanDefinition.setFactoryMethodName("configuration");
+        BeanDefinition interceptorBean = createInterceptorFactoryBean();
+        beanDefinition.getPropertyValues().addPropertyValue("interceptorFactory", interceptorBean);
+        BeanDefinition forestObjectFactoryBean = createForestObjectFactoryBean();
+        beanDefinition.getPropertyValues().addPropertyValue("forestObjectFactory", forestObjectFactoryBean);
         String id = element.getAttribute("id");
-        id = ClientFactoryBeanUtils.getBeanId(id, configurationBeanClass, parserContext);
+        id = ClientFactoryBeanUtils.getBeanId(id, FOREST_CONFIGURATION_CLASS, parserContext);
         if (id != null && id.length() > 0) {
             if (parserContext.getRegistry().containsBeanDefinition(id))  {
                 throw new IllegalStateException("Duplicate spring bean id " + id);
             }
             parserContext.getRegistry().registerBeanDefinition(id, beanDefinition);
+            ConstructorArgumentValues argumentValues = new ConstructorArgumentValues();
+            argumentValues.addIndexedArgumentValue(0, id);
+            beanDefinition.setConstructorArgumentValues(argumentValues);
         }
 
-        Method[] methods = configurationBeanClass.getMethods();
+        Method[] methods = FOREST_CONFIGURATION_CLASS.getMethods();
         for (Method method : methods) {
             String methodName = method.getName();
             Class[] paramTypes = method.getParameterTypes();
@@ -73,8 +84,17 @@ public class ForestConfigurationBeanDefinitionParser implements BeanDefinitionPa
                 if (StringUtils.isNotEmpty(attributeValue)) {
                     if ("backend".equals(attributeName)) {
                         beanDefinition.getPropertyValues().addPropertyValue("backendName", attributeValue);
-                    }
-                    else if ("logHandler".equals(attributeName)) {
+                    } else if ("asyncMode".equals(attributeName)) {
+                        if (StringUtils.isEmpty(attributeValue)) {
+                            throw new ForestRuntimeException("Can not resolve async mode '" + attributeValue + "'");
+                        }
+                        final String enumName = attributeValue.trim().toUpperCase();
+                        ForestAsyncMode mode = ForestAsyncMode.valueOf(enumName);
+                        if (mode == null) {
+                            throw new ForestRuntimeException("Can not resolve async mode '" + enumName + "'");
+                        }
+                        beanDefinition.getPropertyValues().addPropertyValue("asyncMode", mode);
+                    } else if ("logHandler".equals(attributeName)) {
                         try {
                             Class clazz = Class.forName(attributeValue);
                             if (!ForestLogHandler.class.isAssignableFrom(clazz)) {
@@ -97,7 +117,7 @@ public class ForestConfigurationBeanDefinitionParser implements BeanDefinitionPa
             }
         }
         parseChildren(element.getChildNodes(), beanDefinition);
-        log.info("[Forest] Created Forest Configuration Bean: " + beanDefinition);
+        LOG.info("[Forest] Created Forest Configuration Bean: " + beanDefinition);
         return beanDefinition;
 
     }
@@ -125,7 +145,7 @@ public class ForestConfigurationBeanDefinitionParser implements BeanDefinitionPa
             }
             beanDefinition.getPropertyValues().addPropertyValue("variables", varMap);
             beanDefinition.getPropertyValues().addPropertyValue("sslKeyStores", sslKeyStoreMap);
-            beanDefinition.getPropertyValues().addPropertyValue("converterMap", converterMap);
+            beanDefinition.getPropertyValues().addPropertyValue("toMergeConverterMap", converterMap);
         }
     }
 
@@ -144,16 +164,18 @@ public class ForestConfigurationBeanDefinitionParser implements BeanDefinitionPa
         String certPass = elem.getAttribute("certPass");
         String protocolsStr = elem.getAttribute("protocols");
         String cipherSuitesStr = elem.getAttribute("cipher-suites");
+        String trustManager = elem.getAttribute("trustManager");
+        String hostnameVerifier = elem.getAttribute("hostnameVerifier");
+        String sslSocketFactoryBuilder = elem.getAttribute("sslSocketFactoryBuilder");
 
         if (StringUtils.isEmpty(keystoreType)) {
             keystoreType = SSLKeyStore.DEFAULT_KEYSTORE_TYPE;
         }
-        if (StringUtils.isEmpty(filePath)) {
-            throw new ForestRuntimeException(
-                    "The file of SSL KeyStore \"" + id + "\" is empty!");
-        }
         BeanDefinition beanDefinition = createSSLKeyStoreBean(
-                id, keystoreType, filePath, keystorePass, certPass, protocolsStr, cipherSuitesStr);
+                id, keystoreType, filePath,
+                keystorePass, certPass,
+                protocolsStr, cipherSuitesStr,
+                trustManager, hostnameVerifier, sslSocketFactoryBuilder);
         sslKeyStoreMap.put(id, beanDefinition);
     }
 
@@ -166,15 +188,21 @@ public class ForestConfigurationBeanDefinitionParser implements BeanDefinitionPa
                                                        String keystorePass,
                                                        String certPass,
                                                        String protocolsStr,
-                                                       String cipherSuitesStr) {
+                                                       String cipherSuitesStr,
+                                                       String trustManagerClass,
+                                                       String hostnameVerifierClass,
+                                                       String sslSocketFactoryBuilder) {
         BeanDefinition beanDefinition = new GenericBeanDefinition();
-        beanDefinition.setBeanClassName(sslKeyStoreBeanClass.getName());
+        beanDefinition.setBeanClassName(SPRING_SSL_KEY_STORE_CLASS.getName());
         ConstructorArgumentValues beanDefValues = beanDefinition.getConstructorArgumentValues();
         beanDefValues.addGenericArgumentValue(id);
         beanDefValues.addGenericArgumentValue(keystoreType);
         beanDefValues.addGenericArgumentValue(filePath);
         beanDefValues.addGenericArgumentValue(keystorePass);
         beanDefValues.addGenericArgumentValue(certPass);
+        beanDefValues.addGenericArgumentValue(trustManagerClass);
+        beanDefValues.addGenericArgumentValue(hostnameVerifierClass);
+        beanDefValues.addGenericArgumentValue(sslSocketFactoryBuilder);
         if (StringUtils.isNotEmpty(protocolsStr)) {
             String[] strs = protocolsStr.split("[ /t]*,[ /t]*");
             String[] protocols = new String[strs.length];
@@ -226,4 +254,17 @@ public class ForestConfigurationBeanDefinitionParser implements BeanDefinitionPa
         beanDefinition.setBeanClassName(className);
         return beanDefinition;
     }
+
+    public BeanDefinition createInterceptorFactoryBean() {
+        BeanDefinitionBuilder beanDefinitionBuilder = BeanDefinitionBuilder.genericBeanDefinition(SpringInterceptorFactory.class);
+        BeanDefinition beanDefinition = beanDefinitionBuilder.getRawBeanDefinition();
+        return beanDefinition;
+    }
+
+    public BeanDefinition createForestObjectFactoryBean() {
+        BeanDefinitionBuilder beanDefinitionBuilder = BeanDefinitionBuilder.genericBeanDefinition(SpringForestObjectFactory.class);
+        BeanDefinition beanDefinition = beanDefinitionBuilder.getRawBeanDefinition();
+        return beanDefinition;
+    }
+
 }

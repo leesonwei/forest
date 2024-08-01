@@ -9,7 +9,7 @@
 
 
     <forest:configuration
-            id="forestConfiguration"
+            id="forestConfiguration2"
             backend="httpclient"
             timeout="30000"
             retryCount="3"
@@ -33,9 +33,6 @@
 
         <forest:converter dataType="json" class="com.dtflys.forest.converter.json.ForestGsonConverter">
             <forest:parameter name="dateFormat" value="yyyy/MM/dd hh:mm:ss"/>
-        </forest:converter>
-
-        <forest:converter dataType="xml" class="com.dtflys.forest.converter.xml.ForestJaxbConverter">
         </forest:converter>
 
     </forest:configuration>

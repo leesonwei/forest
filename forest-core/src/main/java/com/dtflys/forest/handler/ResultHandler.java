@@ -5,6 +5,8 @@ import com.dtflys.forest.converter.ForestConverter;
 import com.dtflys.forest.exceptions.ForestHandlerException;
 import com.dtflys.forest.http.ForestRequest;
 import com.dtflys.forest.http.ForestResponse;
+import com.dtflys.forest.lifecycles.file.DownloadLifeCycle;
+import com.dtflys.forest.reflection.MethodLifeCycleHandler;
 import com.dtflys.forest.utils.ForestDataType;
 import com.dtflys.forest.utils.ReflectUtils;
 
@@ -12,6 +14,8 @@ import java.io.File;
 import java.io.InputStream;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.nio.charset.Charset;
+import java.util.Optional;
 import java.util.concurrent.Future;
 
 /**
@@ -27,28 +31,57 @@ public class ResultHandler {
         return response.isReceivedResponseData();
     }
 
+    /**
+     * 进行转换并获取结果
+     *
+     * @param request Forest 请求对象
+     * @param response Forest 响应对象
+     * @param resultType {@link Type} 实例
+     * @return 转换后的对象
+     * @since 1.5.27
+     */
+    public Object getResult(ForestRequest request, ForestResponse response, Type resultType) {
+        final Class<?> clazz = ReflectUtils.toClass(resultType);
+        return getResult(request, response, resultType, clazz);
+    }
+
+    /**
+     * 进行转换并获取结果
+     *
+     * @param request Forest 请求对象
+     * @param response Forest 响应对象
+     * @param resultClass {@link Class} 实例
+     * @return 转换后的对象
+     * @since 1.5.27
+     */
+    public Object getResult(ForestRequest request, ForestResponse response, Class resultClass) {
+        final Type type = ReflectUtils.toType(resultClass);
+        return getResult(request, response, type, resultClass);
+    }
+
 
     public Object getResult(ForestRequest request, ForestResponse response, Type resultType, Class resultClass) {
         if (request.isDownloadFile()) {
             return null;
-        }
-        Object result = response.getResult();
-        if (result != null && resultClass.isAssignableFrom(result.getClass())) {
-            return result;
         }
         if (isReceivedResponseData(response)) {
             try {
                 if (void.class.isAssignableFrom(resultClass)) {
                     return null;
                 }
-                if (ForestResponse.class.isAssignableFrom(resultClass)) {
+                if (ForestResponse.class.isAssignableFrom(resultClass)
+                        || ForestRequest.class.isAssignableFrom(resultClass)) {
                     if (resultType instanceof ParameterizedType) {
-                        ParameterizedType parameterizedType = (ParameterizedType) resultType;
-                        Class rowClass = (Class) parameterizedType.getRawType();
-                        if (ForestResponse.class.isAssignableFrom(rowClass)) {
-                            Type realType = parameterizedType.getActualTypeArguments()[0];
-                            Class realClass = ReflectUtils.getClassByType(parameterizedType.getActualTypeArguments()[0]);
-                            Object realResult = getResult(request, response, realType, realClass);
+                        final ParameterizedType parameterizedType = (ParameterizedType) resultType;
+                        final Class<?> rowClass = (Class<?>) parameterizedType.getRawType();
+                        if (ForestResponse.class.isAssignableFrom(rowClass)
+                                || ForestRequest.class.isAssignableFrom(resultClass)) {
+                            final Type realType = parameterizedType.getActualTypeArguments()[0];
+                            Class<?> realClass = ReflectUtils.toClass(parameterizedType.getActualTypeArguments()[0]);
+                            if (realClass == null) {
+                                realClass = String.class;
+                            }
+                            final Object realResult = getResult(request, response, realType, realClass);
                             response.setResult(realResult);
                         }
                     }
@@ -56,11 +89,14 @@ public class ResultHandler {
                 }
                 if (Future.class.isAssignableFrom(resultClass)) {
                     if (resultType instanceof ParameterizedType) {
-                        ParameterizedType parameterizedType = (ParameterizedType) resultType;
-                        Class rowClass = (Class) parameterizedType.getRawType();
+                        final ParameterizedType parameterizedType = (ParameterizedType) resultType;
+                        final Class<?> rowClass = (Class<?>) parameterizedType.getRawType();
                         if (Future.class.isAssignableFrom(rowClass)) {
-                            Type realType = parameterizedType.getActualTypeArguments()[0];
-                            Class realClass = ReflectUtils.getClassByType(parameterizedType.getActualTypeArguments()[0]);
+                            final Type realType = parameterizedType.getActualTypeArguments()[0];
+                            final Class<?> realClass = ReflectUtils.toClass(parameterizedType.getActualTypeArguments()[0]);
+                            if (realClass == null) {
+                                return ((MethodLifeCycleHandler<?>) request.getLifeCycleHandler()).getResultData();
+                            }
                             return getResult(request, response, realType, realClass);
                         }
                     }
@@ -70,43 +106,55 @@ public class ResultHandler {
                         return response.getByteArray();
                     }
                 }
-                Object attFile = request.getAttachment("file");
+                final Object attFile = request.getAttachment(DownloadLifeCycle.ATTACHMENT_NAME_FILE);
                 if (attFile != null && attFile instanceof File) {
-                    ForestConverter converter = request.getConfiguration().getConverter(ForestDataType.JSON);
+                    final ForestConverter converter = request.getConfiguration().getConverter(ForestDataType.JSON);
                     return converter.convertToJavaObject(attFile, resultClass);
                 }
                 String responseText = null;
-                if (result != null && CharSequence.class.isAssignableFrom(result.getClass())) {
-                    responseText = result.toString();
-                }
-                else if (CharSequence.class.isAssignableFrom(resultClass)) {
-                    responseText = response.readAsString();
+                if (CharSequence.class.isAssignableFrom(resultClass)) {
+                    try {
+                        responseText = response.readAsString();
+                    } catch (Throwable th) {
+                        request.getLifeCycleHandler().handleError(request, response, th);
+                    }
                 }
                 else {
-                    responseText = response.getContent();
+                    try {
+                        responseText = response.getContent();
+                    } catch (Throwable th) {
+                        request.getLifeCycleHandler().handleError(request, response, th);
+                    }
                 }
                 response.setContent(responseText);
-                if (CharSequence.class.isAssignableFrom(resultClass)) {
-                    return responseText;
-                }
                 if (InputStream.class.isAssignableFrom(resultClass)) {
                     return response.getInputStream();
                 }
-                ContentType contentType = response.getContentType();
-                if (request.getDecoder() != null) {
+                final ContentType contentType = response.getContentType();
+                final ForestConverter decoder = request.getDecoder();
+                if (decoder != null) {
                     if (contentType != null && contentType.canReadAsString()) {
-                        return request.getDecoder().convertToJavaObject(responseText, resultType);
+                        return decoder.convertToJavaObject(responseText, resultType);
                     } else {
-                        return request.getDecoder().convertToJavaObject(response.getByteArray(), resultType);
+                        final String charset = response.getCharset();
+                        return decoder.convertToJavaObject(
+                                response.getByteArray(), resultType, Charset.forName(Optional.ofNullable(charset).orElse("UTF-8")));
                     }
+                } else if (CharSequence.class.isAssignableFrom(resultClass)) {
+                    return responseText;
                 }
 
-                ForestDataType dataType = request.getDataType();
-                ForestConverter converter = request.getConfiguration().getConverter(dataType);
+                final ForestDataType dataType = request.getDataType();
+                final ForestConverter converter = request.getConfiguration().getConverter(dataType);
                 if (contentType != null && contentType.canReadAsString()) {
                     return converter.convertToJavaObject(responseText, resultType);
                 }
-                return converter.convertToJavaObject(response.getByteArray(), resultType);
+                Charset charset = null;
+                String resCharset  = response.getCharset();
+                if (resCharset != null) {
+                    charset = Charset.forName(resCharset);
+                }
+                return converter.convertToJavaObject(response.getInputStream(), resultType, charset);
             } catch (Exception e) {
                 throw new ForestHandlerException(e, request, response);
             }

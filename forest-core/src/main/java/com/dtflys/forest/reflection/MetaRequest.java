@@ -1,6 +1,10 @@
 package com.dtflys.forest.reflection;
 
+import com.dtflys.forest.converter.ForestConverter;
+import com.dtflys.forest.converter.ForestEncoder;
+import com.dtflys.forest.interceptor.Interceptor;
 import com.dtflys.forest.logging.LogConfiguration;
+import com.dtflys.forest.utils.ForestDataType;
 
 import java.lang.annotation.Annotation;
 
@@ -12,6 +16,12 @@ public class MetaRequest {
      * target http url
      */
     private String url;
+
+    /**
+     * request body type: <br>
+     *     FORM JSON XML TEXT PROTOBUF FILE BINARY
+     */
+    private String bodyType;
 
     /**
      * http method type: <br>
@@ -31,7 +41,20 @@ public class MetaRequest {
      */
     private boolean async;
 
+    /**
+     * timeout
+     */
     private Integer timeout;
+
+    /**
+     * connect timeout
+     */
+    private Integer connectTimeout;
+
+    /**
+     * read timeout
+     */
+    private Integer readTimeout;
 
     /**
      * SSL protocol
@@ -48,7 +71,7 @@ public class MetaRequest {
      */
     private Integer retryCount;
 
-    private long maxRetryInterval;
+    private Long maxRetryInterval;
 
     /**
      * Content Type
@@ -66,6 +89,18 @@ public class MetaRequest {
     private String charset;
 
     /**
+     * Response Encoding
+     * <p>响应内容的字符编码[UTF-8, GBK...]
+     *  <p>优先根据该字段来确认字符编码格式,再根据如下顺序来获取
+     *  <ul>
+     *      <li>1. 从ContentType中获取</li>
+     *      <li>2. 从响应头中的 Content-Encoding 获取</li>
+     *      <li>3. 根据响应内容智能识别</li>
+     *  </ul>
+     */
+    private String responseEncoding;
+
+    /**
      * User Agent
      */
     private String userAgent;
@@ -78,13 +113,15 @@ public class MetaRequest {
     /**
      * 拦截器类数组
      */
-    private Class<?>[] interceptor;
+    private Class<? extends Interceptor>[] interceptor;
 
     private String[] data;
 
     private long progressStep;
 
-    private Class<?> decoder;
+    private Class<? extends ForestEncoder> encoder;
+
+    private Class<? extends ForestConverter> decoder;
 
     /**
      * KeyStore Id
@@ -124,6 +161,19 @@ public class MetaRequest {
         this.url = url;
     }
 
+    public String getBodyType() {
+        return bodyType;
+    }
+
+    public void setBodyType(String bodyType) {
+        this.bodyType = bodyType;
+    }
+
+    public void setBodyType(ForestDataType bodyType) {
+        this.bodyType = bodyType.getName();
+    }
+
+
     public String getType() {
         return type;
     }
@@ -156,6 +206,22 @@ public class MetaRequest {
         this.timeout = timeout;
     }
 
+    public Integer getConnectTimeout() {
+        return connectTimeout;
+    }
+
+    public void setConnectTimeout(Integer connectTimeout) {
+        this.connectTimeout = connectTimeout;
+    }
+
+    public Integer getReadTimeout() {
+        return readTimeout;
+    }
+
+    public void setReadTimeout(Integer readTimeout) {
+        this.readTimeout = readTimeout;
+    }
+
     public String getSslProtocol() {
         return sslProtocol;
     }
@@ -184,11 +250,11 @@ public class MetaRequest {
         }
     }
 
-    public long getMaxRetryInterval() {
+    public Long getMaxRetryInterval() {
         return maxRetryInterval;
     }
 
-    public void setMaxRetryInterval(long maxRetryInterval) {
+    public void setMaxRetryInterval(Long maxRetryInterval) {
         this.maxRetryInterval = maxRetryInterval;
     }
 
@@ -224,6 +290,14 @@ public class MetaRequest {
         this.charset = charset;
     }
 
+    public String getResponseEncoding() {
+        return responseEncoding;
+    }
+
+    public void setResponseEncoding(String responseEncoding) {
+        this.responseEncoding = responseEncoding;
+    }
+
     public String[] getHeaders() {
         return headers;
     }
@@ -232,11 +306,11 @@ public class MetaRequest {
         this.headers = headers;
     }
 
-    public Class<?>[] getInterceptor() {
+    public Class<? extends Interceptor>[] getInterceptor() {
         return interceptor;
     }
 
-    public void setInterceptor(Class<?>[] interceptor) {
+    public void setInterceptor(Class<? extends Interceptor>[] interceptor) {
         this.interceptor = interceptor;
     }
 
@@ -256,11 +330,19 @@ public class MetaRequest {
         this.progressStep = progressStep;
     }
 
-    public Class<?> getDecoder() {
+    public Class<? extends ForestEncoder> getEncoder() {
+        return encoder;
+    }
+
+    public void setEncoder(Class<? extends ForestEncoder> encoder) {
+        this.encoder = encoder;
+    }
+
+    public Class<? extends ForestConverter> getDecoder() {
         return decoder;
     }
 
-    public void setDecoder(Class<?> decoder) {
+    public void setDecoder(Class<? extends ForestConverter> decoder) {
         this.decoder = decoder;
     }
 

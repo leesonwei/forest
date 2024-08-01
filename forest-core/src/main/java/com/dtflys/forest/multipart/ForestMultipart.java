@@ -1,6 +1,7 @@
 package com.dtflys.forest.multipart;
 
 import com.dtflys.forest.exceptions.ForestRuntimeException;
+import org.apache.commons.io.IOUtils;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -19,9 +20,7 @@ import java.io.InputStream;
  * @see FilePathMultipart
  * @see InputStreamMultipart
  */
-public abstract class ForestMultipart<T> {
-
-    private int BUFFER_SIZE = 4096;
+public abstract class ForestMultipart<T, SELF extends ForestMultipart<T, SELF>> {
 
     protected String name;
 
@@ -34,23 +33,26 @@ public abstract class ForestMultipart<T> {
         return name;
     }
 
-    public void setName(String name) {
+    public SELF setName(String name) {
         this.name = name;
+        return (SELF) this;
     }
 
-    public void setFileName(String fileName) {
+    public SELF setFileName(String fileName) {
         this.fileName = fileName;
+        return (SELF) this;
     }
 
     public String getContentType() {
         return contentType;
     }
 
-    public void setContentType(String contentType) {
+    public SELF setContentType(String contentType) {
         this.contentType = contentType;
+        return (SELF) this;
     }
 
-    public abstract void setData(T data);
+    public abstract SELF setData(T data);
 
     public abstract String getOriginalFileName();
 
@@ -63,25 +65,11 @@ public abstract class ForestMultipart<T> {
     public abstract File getFile();
 
     public byte[] getBytes() {
-        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
         InputStream inputStream = getInputStream();
-        byte[] buffer = new byte[BUFFER_SIZE];
-        int len = 0;
         try {
-            while ((len = inputStream.read(buffer)) != -1) {
-                byteArrayOutputStream.write(buffer, 0, len);
-            }
-            byteArrayOutputStream.flush();
-            return byteArrayOutputStream.toByteArray();
+            return IOUtils.toByteArray(inputStream);
         } catch (IOException e) {
             throw new ForestRuntimeException(e);
-        } finally {
-            try {
-                inputStream.close();
-                byteArrayOutputStream.close();
-            } catch (IOException e) {
-                throw new ForestRuntimeException(e);
-            }
         }
     }
 

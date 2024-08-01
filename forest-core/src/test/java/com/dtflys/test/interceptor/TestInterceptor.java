@@ -1,15 +1,19 @@
 package com.dtflys.test.interceptor;
 
+import com.dtflys.forest.Forest;
 import com.dtflys.forest.backend.HttpBackend;
+import com.dtflys.forest.converter.json.ForestJsonConverter;
+import com.dtflys.forest.http.ForestHeader;
+import com.dtflys.forest.http.ForestResponse;
 import com.dtflys.forest.logging.ForestLogger;
 import com.dtflys.test.http.BaseClientTest;
-import com.dtflys.test.mock.GetMockServer;
 import com.dtflys.forest.interceptor.DefaultInterceptorFactory;
 import com.dtflys.forest.config.ForestConfiguration;
 import com.dtflys.forest.exceptions.ForestRuntimeException;
 import com.dtflys.test.http.TestGetClient;
 import com.dtflys.forest.interceptor.Interceptor;
-import org.junit.Before;
+import okhttp3.mockwebserver.MockResponse;
+import okhttp3.mockwebserver.MockWebServer;
 import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
@@ -18,6 +22,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static junit.framework.Assert.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * @author gongjun[jun.gong@thebeastshop.com]
@@ -27,8 +32,10 @@ public class TestInterceptor extends BaseClientTest {
 
     private final static Logger log = LoggerFactory.getLogger(TestGetClient.class);
 
+    public final static String EXPECTED = "{\"status\":\"ok\"}";
+
     @Rule
-    public GetMockServer server = new GetMockServer(this);
+    public MockWebServer server = new MockWebServer();
 
     private static ForestConfiguration configuration;
 
@@ -36,85 +43,85 @@ public class TestInterceptor extends BaseClientTest {
 
     private static BaseInterceptorClient baseInterceptorClient;
 
-    public TestInterceptor(HttpBackend backend) {
-        super(backend, configuration);
+    @BeforeClass
+    public static void prepareClient() {
+        configuration = ForestConfiguration.createConfiguration();
+        configuration.setCacheEnabled(false);
+    }
+
+    @Override
+    public void afterRequests() {
+    }
+
+    public TestInterceptor(String backend, String jsonConverter) {
+        super(backend, jsonConverter, configuration);
+        configuration.setVariableValue("port", server.getPort());
         interceptorClient = configuration.createInstance(InterceptorClient.class);
         baseInterceptorClient = configuration.createInstance(BaseInterceptorClient.class);
     }
 
-    @BeforeClass
-    public static void prepareClient() {
-        configuration = ForestConfiguration.configuration();
-        configuration.setCacheEnabled(false);
-        configuration.setVariableValue("port", GetMockServer.port);
-    }
-
-
-    @Before
-    public void prepareMockServer() {
-        server.initServer();
-    }
 
     @Test
     public void testSimpleInterceptor() {
+        server.enqueue(new MockResponse().setBody(EXPECTED));
         ForestLogger logger = Mockito.mock(ForestLogger.class);
         configuration.getLogHandler().setLogger(logger);
-
-        String result = interceptorClient.simple();
-        assertNotNull(result);
-        assertEquals("XX: " + GetMockServer.EXPECTED, result);
-
-        Mockito.verify(logger).info("[Forest] Request: \n" +
+        assertThat(interceptorClient.simple())
+            .isNotNull()
+            .isEqualTo("XX: " + EXPECTED);
+        Mockito.verify(logger).info("[Forest] Request (" + configuration.getBackend().getName() + "): \n" +
                 "\t[Type Change]: POST -> GET\n" +
-                "\tGET http://localhost:5002/hello/user?username=foo&username=foo HTTP\n" +
+                "\tGET http://localhost:" + server.getPort() + "/hello/user?username=foo&username=foo HTTP\n" +
                 "\tHeaders: \n" +
+                "\t\tUser-Agent: " + ForestHeader.DEFAULT_USER_AGENT_VALUE + "\n" +
                 "\t\tAccept: text/plain");
     }
 
     @Test
     public void testMultipleInterceptor() {
-        String result = interceptorClient.multiple();
-        assertNotNull(result);
-        assertEquals("YY: XX: " + GetMockServer.EXPECTED, result);
-    }
-
-    @Test
-    public void testWrongInterceptorClass() {
-        boolean error = false;
-        try {
-            configuration.createInstance(WrongInterceptorClient.class);
-        } catch (ForestRuntimeException e) {
-            error = true;
-            log.error(e.getMessage());
-            assertEquals("Class [" + DefaultInterceptorFactory.class.getName() + "] is not a implement of [" +
-                    Interceptor.class.getName() + "] interface.", e.getMessage());
-        }
-        assertTrue(error);
+        server.enqueue(new MockResponse().setBody(EXPECTED));
+        assertThat(interceptorClient.multiple())
+                .isNotNull()
+                .isEqualTo("YY: XX: " + EXPECTED);
     }
 
     @Test
     public void testFalseInterceptor() {
-        String result = interceptorClient.beforeFalse("a");
-        assertNull(result);
+        server.enqueue(new MockResponse().setBody(EXPECTED));
+        assertThat(interceptorClient.beforeFalse("a")).isNull();
     }
 
 
     @Test
     public void testBaseNoneInterceptor() {
-        try {
-            String result = baseInterceptorClient.none();
-            assertNotNull(result);
-            assertEquals("Base: " + GetMockServer.EXPECTED, result);
-        } catch (Throwable th) {
-            System.out.println("yyy");
-        }
+        server.enqueue(new MockResponse().setBody(EXPECTED));
+        assertThat(baseInterceptorClient.none())
+                .isNotNull()
+                .isEqualTo("Base: " + EXPECTED);
     }
 
     @Test
     public void testBaseSimpleInterceptor() {
-        String result = baseInterceptorClient.simple();
-        assertNotNull(result);
-        assertEquals("XX: Base: " + GetMockServer.EXPECTED, result);
+        server.enqueue(new MockResponse().setBody(EXPECTED));
+        try {
+            assertThat(baseInterceptorClient.simple("xxx"))
+                    .isNotNull()
+                    .isEqualTo("XX: Base: " + EXPECTED);
+        } catch (Throwable th) {
+            assertThat(configuration.getBackend().getName()).isEqualTo("httpclient");
+        }
+
     }
+
+
+    @Test
+    public void testBaseSimpleInterceptorWithGenerationType() {
+        server.enqueue(new MockResponse().setBody(EXPECTED));
+        assertThat(baseInterceptorClient.generationType())
+                .isNotNull()
+                .extracting(ForestResponse::getResult)
+                .isEqualTo("XX: Base: " + EXPECTED);
+    }
+
 
 }

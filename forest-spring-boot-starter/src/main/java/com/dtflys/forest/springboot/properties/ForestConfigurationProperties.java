@@ -1,55 +1,110 @@
 package com.dtflys.forest.springboot.properties;
 
+import com.dtflys.forest.callback.AddressSource;
+import com.dtflys.forest.callback.RetryWhen;
+import com.dtflys.forest.callback.SuccessWhen;
+import com.dtflys.forest.http.ForestAsyncMode;
+import com.dtflys.forest.interceptor.Interceptor;
 import com.dtflys.forest.logging.DefaultLogHandler;
 import com.dtflys.forest.logging.ForestLogHandler;
 import com.dtflys.forest.retryer.BackOffRetryer;
 import com.dtflys.forest.ssl.SSLUtils;
+import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.context.annotation.Role;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 @Component
+@Role(BeanDefinition.ROLE_INFRASTRUCTURE)
 @ConfigurationProperties(prefix = "forest", ignoreUnknownFields = true)
 public class ForestConfigurationProperties {
 
     /**
-     * Enable forest, default true
-     */
-//    private boolean enabled = true;
-
-    /**
-     * spring bean id of forest configuration
+     * Spring bean id of forest configuration
      */
     private String beanId;
 
     /**
-     * maximum number of conntections allowed
+     * Maximum number of conntections allowed
      */
     private int maxConnections = 500;
 
     /**
-     * maximum number of connections allowed per route
+     * Maximum number of connections allowed per route
      */
     private int maxRouteConnections = 500;
 
+
     /**
-     * timeout in milliseconds
+     * Maximum number of requests queue
+     */
+    private int maxRequestQueueSize = 200;
+
+    /**
+     * Maximum number of async requests threads
+     */
+    private int maxAsyncThreadSize = 200;
+
+    /**
+     * Capacity of async requests queue
+     */
+    private int maxAsyncQueueSize = 100;
+
+    /**
+     * Parallel mode of async requests
+     */
+    private ForestAsyncMode asyncMode = ForestAsyncMode.PLATFORM;
+
+    /**
+     * Timeout in milliseconds
      */
     private int timeout = 3000;
 
     /**
-     * connect timeout in milliseconds
+     * Connect timeout in milliseconds
      */
-    private int connectTimeout = 2000;
+    private Integer connectTimeout = null;
 
     /**
-     * request charset
+     * Read timeout in milliseconds
+     */
+    private Integer readTimeout = null;
+
+    /**
+     * Request charset
      */
     private String charset = "UTF-8";
+
+    /**
+     * Global default http scheme
+     * <p>it can be:
+     * <ul>
+     *     <li>http</li>
+     *     <li>https</li>
+     * </ul>
+     */
+    private String baseAddressScheme;
+
+    /**
+     * Global default host
+     */
+    private String baseAddressHost;
+
+    /**
+     * Global default port
+     */
+    private Integer baseAddressPort;
+
+    /**
+     * The source of global default address
+     */
+    private Class<? extends AddressSource> baseAddressSource;
 
     /**
      * Class of retryer
@@ -57,14 +112,19 @@ public class ForestConfigurationProperties {
     private Class retryer = BackOffRetryer.class;
 
     /**
-     * count of retry times
+     * Max count of retry times
      */
-    private Integer retryCount = 0;
+    private Integer maxRetryCount = 0;
 
     /**
-     * max interval of retrying request
+     * Max interval of retrying request
      */
     private long maxRetryInterval = 0;
+
+    /**
+     * Enable auto redirection
+     */
+    private boolean autoRedirection = true;
 
     /**
      * Enable print log of request/response
@@ -93,14 +153,28 @@ public class ForestConfigurationProperties {
 
 
     /**
-     * default SSL protocol for https requests
+     * Default SSL protocol for https requests
      */
     private String sslProtocol = SSLUtils.TLS_1_2;
 
     /**
-     * backend of forest: httpclient, okhttp3
+     * Backend HTTP framework of forest, following backend can be chosen:
+     * <ul>
+     *     <li>httpclient</li>
+     *     <li>okhttp3</li>
+     * </ul>
      */
     private String backend = "okhttp3";
+
+    /**
+     * Max size of backend client cache
+     */
+    private Integer backendClientCacheMaxSize = 128;
+
+    /**
+     * Expire time of backend client cache
+     */
+    private Duration backendClientCacheExpireTime;
 
     /**
      * global variables
@@ -110,7 +184,18 @@ public class ForestConfigurationProperties {
     /**
      * Class list of interceptors
      */
-    private List<Class> interceptors = new ArrayList<>();
+    private List<Class<? extends Interceptor>> interceptors = new ArrayList<>();
+
+    /**
+     * Success When callback function: used to judge whether the request is successful
+     */
+    private Class<? extends SuccessWhen> successWhen;
+
+    /**
+     * Retry When callback function: used to determine whether to trigger a retry request
+     */
+    private Class<? extends RetryWhen> retryWhen;
+
 
     /**
      * SSL Key Stores
@@ -155,6 +240,38 @@ public class ForestConfigurationProperties {
         this.maxRouteConnections = maxRouteConnections;
     }
 
+    public int getMaxRequestQueueSize() {
+        return maxRequestQueueSize;
+    }
+
+    public void setMaxRequestQueueSize(int maxRequestQueueSize) {
+        this.maxRequestQueueSize = maxRequestQueueSize;
+    }
+
+    public int getMaxAsyncThreadSize() {
+        return maxAsyncThreadSize;
+    }
+
+    public void setMaxAsyncThreadSize(int maxAsyncThreadSize) {
+        this.maxAsyncThreadSize = maxAsyncThreadSize;
+    }
+
+    public int getMaxAsyncQueueSize() {
+        return maxAsyncQueueSize;
+    }
+
+    public void setMaxAsyncQueueSize(int maxAsyncQueueSize) {
+        this.maxAsyncQueueSize = maxAsyncQueueSize;
+    }
+
+    public ForestAsyncMode getAsyncMode() {
+        return asyncMode;
+    }
+
+    public void setAsyncMode(ForestAsyncMode asyncMode) {
+        this.asyncMode = asyncMode;
+    }
+
     public int getTimeout() {
         return timeout;
     }
@@ -163,12 +280,28 @@ public class ForestConfigurationProperties {
         this.timeout = timeout;
     }
 
-    public int getConnectTimeout() {
+    public Integer getConnectTimeout() {
         return connectTimeout;
     }
 
-    public void setConnectTimeout(int connectTimeout) {
+    public Integer getConnectTimeoutMillis() {
+        return connectTimeout;
+    }
+
+    public void setConnectTimeout(Integer connectTimeout) {
         this.connectTimeout = connectTimeout;
+    }
+
+    public Integer getReadTimeout() {
+        return readTimeout;
+    }
+
+    public Integer getReadTimeoutMillis() {
+        return readTimeout;
+    }
+
+    public void setReadTimeout(Integer readTimeout) {
+        this.readTimeout = readTimeout;
     }
 
     public String getCharset() {
@@ -179,6 +312,38 @@ public class ForestConfigurationProperties {
         this.charset = charset;
     }
 
+    public String getBaseAddressScheme() {
+        return baseAddressScheme;
+    }
+
+    public void setBaseAddressScheme(String baseAddressScheme) {
+        this.baseAddressScheme = baseAddressScheme;
+    }
+
+    public String getBaseAddressHost() {
+        return baseAddressHost;
+    }
+
+    public void setBaseAddressHost(String baseAddressHost) {
+        this.baseAddressHost = baseAddressHost;
+    }
+
+    public Integer getBaseAddressPort() {
+        return baseAddressPort;
+    }
+
+    public void setBaseAddressPort(Integer baseAddressPort) {
+        this.baseAddressPort = baseAddressPort;
+    }
+
+    public Class<? extends AddressSource> getBaseAddressSource() {
+        return baseAddressSource;
+    }
+
+    public void setBaseAddressSource(Class<? extends AddressSource> baseAddressSource) {
+        this.baseAddressSource = baseAddressSource;
+    }
+
     public Class getRetryer() {
         return retryer;
     }
@@ -187,13 +352,24 @@ public class ForestConfigurationProperties {
         this.retryer = retryer;
     }
 
+    @Deprecated
     public int getRetryCount() {
-        return retryCount;
+        return maxRetryCount;
     }
 
+    @Deprecated
     public void setRetryCount(int retryCount) {
-        this.retryCount = retryCount;
+        this.maxRetryCount = retryCount;
     }
+
+    public int getMaxRetryCount() {
+        return maxRetryCount;
+    }
+
+    public void setMaxRetryCount(int retryCount) {
+        this.maxRetryCount = retryCount;
+    }
+
 
     public long getMaxRetryInterval() {
         return maxRetryInterval;
@@ -201,6 +377,14 @@ public class ForestConfigurationProperties {
 
     public void setMaxRetryInterval(long maxRetryInterval) {
         this.maxRetryInterval = maxRetryInterval;
+    }
+
+    public boolean isAutoRedirection() {
+        return autoRedirection;
+    }
+
+    public void setAutoRedirection(boolean autoRedirection) {
+        this.autoRedirection = autoRedirection;
     }
 
     public boolean isLogEnabled() {
@@ -259,6 +443,22 @@ public class ForestConfigurationProperties {
         this.backend = backend;
     }
 
+    public Integer getBackendClientCacheMaxSize() {
+        return backendClientCacheMaxSize;
+    }
+
+    public void setBackendClientCacheMaxSize(Integer backendClientCacheMaxSize) {
+        this.backendClientCacheMaxSize = backendClientCacheMaxSize;
+    }
+
+    public Duration getBackendClientCacheExpireTime() {
+        return backendClientCacheExpireTime;
+    }
+
+    public void setBackendClientCacheExpireTime(Duration backendClientCacheExpireTime) {
+        this.backendClientCacheExpireTime = backendClientCacheExpireTime;
+    }
+
     public Map<String, Object> getVariables() {
         return variables;
     }
@@ -267,12 +467,28 @@ public class ForestConfigurationProperties {
         this.variables = variables;
     }
 
-    public List<Class> getInterceptors() {
+    public List<Class<? extends Interceptor>> getInterceptors() {
         return interceptors;
     }
 
-    public void setInterceptors(List<Class> interceptors) {
+    public void setInterceptors(List<Class<? extends Interceptor>> interceptors) {
         this.interceptors = interceptors;
+    }
+
+    public Class<? extends SuccessWhen> getSuccessWhen() {
+        return successWhen;
+    }
+
+    public void setSuccessWhen(Class<? extends SuccessWhen> successWhen) {
+        this.successWhen = successWhen;
+    }
+
+    public Class<? extends RetryWhen> getRetryWhen() {
+        return retryWhen;
+    }
+
+    public void setRetryWhen(Class<? extends RetryWhen> retryWhen) {
+        this.retryWhen = retryWhen;
     }
 
     public List<ForestSSLKeyStoreProperties> getSslKeyStores() {

@@ -10,7 +10,6 @@ import org.apache.http.entity.mime.MinimalField;
 import org.apache.http.entity.mime.content.ContentBody;
 import org.apache.http.entity.mime.content.StringBody;
 
-import javax.xml.bind.helpers.AbstractUnmarshallerImpl;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -18,6 +17,7 @@ import java.io.InputStreamReader;
 import java.io.Reader;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -72,7 +72,7 @@ public class HttpclientLogBodyMessage implements LogBodyMessage {
             return null;
         }
         Header contentTypeHeader = entity.getContentType();
-        ContentType contentType = new ContentType(contentTypeHeader.getValue());
+        ContentType contentType = new ContentType(contentTypeHeader.getValue(), StandardCharsets.UTF_8);
         if (contentType.isMultipart()) {
             Class[] paramTypes = new Class[0];
             Object[] args = new Object[0];

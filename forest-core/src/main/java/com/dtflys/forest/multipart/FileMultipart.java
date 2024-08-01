@@ -3,13 +3,13 @@ package com.dtflys.forest.multipart;
 import com.dtflys.forest.exceptions.ForestFileNotFoundException;
 import com.dtflys.forest.exceptions.ForestRuntimeException;
 import com.dtflys.forest.utils.StringUtils;
+import org.apache.commons.io.FileUtils;
 
 import java.io.*;
 
-public class FileMultipart extends ForestMultipart<File> {
+public class FileMultipart extends ForestMultipart<File, FileMultipart> {
 
     private File file;
-
 
     @Override
     public String getOriginalFileName() {
@@ -21,18 +21,16 @@ public class FileMultipart extends ForestMultipart<File> {
 
 
     @Override
-    public void setData(File data) {
+    public FileMultipart setData(File data) {
         this.file = data;
+        return this;
     }
 
     @Override
     public InputStream getInputStream() {
-        if (!file.exists()) {
-            throw new ForestFileNotFoundException(file.getAbsolutePath());
-        }
         try {
-            return new FileInputStream(file);
-        } catch (FileNotFoundException e) {
+            return FileUtils.openInputStream(file);
+        } catch (IOException e) {
             throw new ForestRuntimeException(e);
         }
     }

@@ -9,10 +9,6 @@ import java.util.Map;
 
 public abstract class RequestBodyBuilder<T, B extends ForestRequestBody, D extends RequestBodyBuilder> {
 
-    protected T data;
-
-    protected String defaultValue;
-
     private final static Map<Class, RequestBodyBuilder> bodyBuilderMap = new LinkedHashMap<>();
 
 
@@ -21,7 +17,7 @@ public abstract class RequestBodyBuilder<T, B extends ForestRequestBody, D exten
     }
 
     public static boolean canBuild(Class clazz) {
-        RequestBodyBuilder builder = type(clazz);
+        final RequestBodyBuilder builder = type(clazz);
         return builder != null;
     }
 
@@ -33,7 +29,7 @@ public abstract class RequestBodyBuilder<T, B extends ForestRequestBody, D exten
         if (clazz == null) {
             return null;
         }
-        RequestBodyBuilder builder = bodyBuilderMap.get(clazz);
+        final RequestBodyBuilder builder = bodyBuilderMap.get(clazz);
         if (builder == null) {
             for (Class keyClass : bodyBuilderMap.keySet()) {
                 if (keyClass.isAssignableFrom(clazz)) {
@@ -44,27 +40,26 @@ public abstract class RequestBodyBuilder<T, B extends ForestRequestBody, D exten
         return builder;
     }
 
-    public D setData(T data) {
-        this.data = data;
-        return (D) this;
+    static {
+        registerBodyBuilder(CharSequence.class, new RequestBodyBuilder.StringRequestBodyBuilder());
+        registerBodyBuilder(String.class, new RequestBodyBuilder.StringRequestBodyBuilder());
+        registerBodyBuilder(File.class, new RequestBodyBuilder.FileRequestBodyBuilder());
+        registerBodyBuilder(byte[].class, new RequestBodyBuilder.ByteArrayRequestBodyBuilder());
+        registerBodyBuilder(InputStream.class, new RequestBodyBuilder.InputStreamBodyBuilder());
+        registerBodyBuilder(Object.class, new RequestBodyBuilder.ObjectRequestBodyBuilder());
     }
 
-    public D setDefaultValue(String defaultValue) {
-        this.defaultValue = defaultValue;
-        return (D) this;
-    }
 
-
-    public abstract B build();
+    public abstract B build(T data, String defaultValue);
 
 
     public static class StringRequestBodyBuilder extends RequestBodyBuilder<String, StringRequestBody, StringRequestBodyBuilder> {
         @Override
-        public StringRequestBody build() {
+        public StringRequestBody build(String data, String defaultValue) {
             if (data == null) {
                 return null;
             }
-            StringRequestBody body = new StringRequestBody(data);
+            final StringRequestBody body = new StringRequestBody(data);
             body.setDefaultValue(defaultValue);
             return body;
         }
@@ -72,11 +67,11 @@ public abstract class RequestBodyBuilder<T, B extends ForestRequestBody, D exten
 
     public static class ByteArrayRequestBodyBuilder extends RequestBodyBuilder<byte[], ByteArrayRequestBody, StringRequestBodyBuilder> {
         @Override
-        public ByteArrayRequestBody build() {
+        public ByteArrayRequestBody build(byte[] data, String defaultValue) {
             if (data == null) {
                 return null;
             }
-            ByteArrayRequestBody body = new ByteArrayRequestBody(data);
+            final ByteArrayRequestBody body = new ByteArrayRequestBody(data);
             body.setDefaultValue(defaultValue);
             return body;
         }
@@ -85,11 +80,11 @@ public abstract class RequestBodyBuilder<T, B extends ForestRequestBody, D exten
 
     public static class FileRequestBodyBuilder extends RequestBodyBuilder<File, FileRequestBody, StringRequestBodyBuilder> {
         @Override
-        public FileRequestBody build() {
+        public FileRequestBody build(File data, String defaultValue) {
             if (data == null) {
                 return null;
             }
-            FileRequestBody body = new FileRequestBody(data);
+            final FileRequestBody body = new FileRequestBody(data);
             body.setDefaultValue(defaultValue);
             return body;
         }
@@ -97,11 +92,11 @@ public abstract class RequestBodyBuilder<T, B extends ForestRequestBody, D exten
 
     public static class InputStreamBodyBuilder extends RequestBodyBuilder<InputStream, InputStreamRequestBody, StringRequestBodyBuilder> {
         @Override
-        public InputStreamRequestBody build() {
+        public InputStreamRequestBody build(InputStream data, String defaultValue) {
             if (data == null) {
                 return null;
             }
-            InputStreamRequestBody body = new InputStreamRequestBody(data);
+            final InputStreamRequestBody body = new InputStreamRequestBody(data);
             body.setDefaultValue(defaultValue);
             return body;
         }
@@ -109,11 +104,11 @@ public abstract class RequestBodyBuilder<T, B extends ForestRequestBody, D exten
 
     public static class ObjectRequestBodyBuilder extends RequestBodyBuilder<Object, ObjectRequestBody, StringRequestBodyBuilder> {
         @Override
-        public ObjectRequestBody build() {
+        public ObjectRequestBody build(Object data, String defaultValue) {
             if (data == null) {
                 return null;
             }
-            ObjectRequestBody body = new ObjectRequestBody(data);
+            final ObjectRequestBody body = new ObjectRequestBody(data);
             body.setDefaultValue(defaultValue);
             return body;
         }

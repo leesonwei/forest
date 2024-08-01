@@ -1,5 +1,8 @@
 package com.dtflys.forest.logging;
 
+import com.dtflys.forest.backend.HttpBackend;
+import com.dtflys.forest.http.ForestAsyncMode;
+import com.dtflys.forest.http.ForestRequest;
 import com.dtflys.forest.http.ForestResponse;
 import com.dtflys.forest.utils.StringUtils;
 
@@ -13,7 +16,7 @@ import java.util.List;
  */
 public class DefaultLogHandler implements ForestLogHandler {
 
-    private ForestLogger logger = new ForestLogger();
+    private ForestLogger logger = ForestLogger.getLogger(DefaultLogHandler.class);
 
     /**
      * 获取请求头日志内容
@@ -21,15 +24,15 @@ public class DefaultLogHandler implements ForestLogHandler {
      * @return 请求头日志内容
      */
     protected String requestLoggingHeaders(RequestLogMessage requestLogMessage) {
-        StringBuilder builder = new StringBuilder();
-        List<LogHeaderMessage> headers = requestLogMessage.getHeaders();
+        final StringBuilder builder = new StringBuilder();
+        final List<LogHeaderMessage> headers = requestLogMessage.getHeaders();
         if (headers == null) {
             return "";
         }
         for (int i = 0; i < headers.size(); i++) {
-            LogHeaderMessage headerMessage = headers.get(i);
-            String name = headerMessage.getName();
-            String value = headerMessage.getValue();
+            final LogHeaderMessage headerMessage = headers.get(i);
+            final String name = headerMessage.getName();
+            final String value = headerMessage.getValue();
             builder.append("\t\t" + name + ": " + value);
             if (i < headers.size() - 1) {
                 builder.append("\n");
@@ -44,7 +47,7 @@ public class DefaultLogHandler implements ForestLogHandler {
      * @return 请求体字符串
      */
     protected String requestLoggingBody(RequestLogMessage requestLogMessage) {
-        LogBodyMessage logBodyMessage = requestLogMessage.getBody();
+        final LogBodyMessage logBodyMessage = requestLogMessage.getBody();
         if (logBodyMessage == null) {
             return "";
         }
@@ -57,18 +60,44 @@ public class DefaultLogHandler implements ForestLogHandler {
      * @return 日志内容字符串
      */
     protected String requestTypeChangeHistory(RequestLogMessage requestLogMessage) {
-        List<String> typeChangeHistory = requestLogMessage.getTypeChangeHistory();
+        final List<String> typeChangeHistory = requestLogMessage.getTypeChangeHistory();
         if (typeChangeHistory == null || typeChangeHistory.size() == 0) {
             return "";
         }
-        StringBuilder builder = new StringBuilder();
+        final StringBuilder builder = new StringBuilder();
         builder.append("[Type Change]: ");
         for (Iterator<String> iterator = typeChangeHistory.iterator(); iterator.hasNext(); ) {
-            String type = iterator.next();
+            final String type = iterator.next();
             builder.append(type).append(" -> ");
         }
         builder.append(requestLogMessage.getType()).append("\n\t");
         return builder.toString();
+    }
+
+    protected String asyncModeContent(RequestLogMessage requestLogMessage) {
+        final ForestRequest request = requestLogMessage.getRequest();
+        if (!request.isAsync()) {
+            return "";
+        }
+        final StringBuilder builder = new StringBuilder("[async");
+        if (ForestAsyncMode.KOTLIN_COROUTINE == request.getAsyncMode()) {
+            builder.append(": kotlin");
+        }
+        builder.append("] ");
+        return builder.toString();
+    }
+
+    /**
+     * 后端框架名称
+     * @param requestLogMessage 请求日志消息，{@link RequestLogMessage}类实例
+     * @return 后端框架名称字符串
+     */
+    protected String backendContent(RequestLogMessage requestLogMessage) {
+        final HttpBackend backend = requestLogMessage.getRequest().getBackend();
+        if (backend == null) {
+            return "";
+        }
+        return "(" + backend.getName() + ")";
     }
 
     /**
@@ -77,9 +106,31 @@ public class DefaultLogHandler implements ForestLogHandler {
      * @return 重试信息字符串
      */
     protected String retryContent(RequestLogMessage requestLogMessage) {
-        int retryCount = requestLogMessage.getRetryCount();
+        final int retryCount = requestLogMessage.getRetryCount();
         if (retryCount > 0) {
             return "[Retry]: " + retryCount + "\n\t";
+        }
+        return "";
+    }
+
+    /**
+     * 请求重定向信息
+     *
+     * @param requestLogMessage 请求日志消息对象
+     * @return 请求重定向信息字符串
+     */
+    protected String redirection(RequestLogMessage requestLogMessage) {
+        final ForestRequest request = requestLogMessage.getRequest();
+        if (request.isRedirection()) {
+            final ForestRequest prevRequest = request.getPrevRequest();
+            final ForestResponse prevResponse = request.getPrevResponse();
+            return "[Redirect]: From " +
+                    prevRequest.getType().getName() +
+                    " " +
+                    prevRequest.getUrl() +
+                    " -> " +
+                    prevResponse.getStatusCode() +
+                    "\n\t";
         }
         return "";
     }
@@ -90,9 +141,25 @@ public class DefaultLogHandler implements ForestLogHandler {
      * @return 正向代理日志字符串
      */
     protected String proxyContent(RequestLogMessage requestLogMessage) {
-        RequestProxyLogMessage proxyLogMessage = requestLogMessage.getProxy();
+        final RequestProxyLogMessage proxyLogMessage = requestLogMessage.getProxy();
+        final StringBuilder builder = new StringBuilder();
         if (proxyLogMessage != null) {
-            return "[Proxy]: host: " + proxyLogMessage.getHost() + ", port: " + proxyLogMessage.getPort() + "\n\t";
+            builder.append("[Proxy]: type: ")
+                    .append(proxyLogMessage.getType())
+                    .append(", host: ")
+                    .append(proxyLogMessage.getHost())
+                    .append(", port: ")
+                    .append(proxyLogMessage.getPort());
+            final String[] headers = proxyLogMessage.getHeaders();
+            if (headers != null && headers.length > 0) {
+                builder.append(", headers: {");
+                for (String header : headers) {
+                    builder.append(header);
+                }
+                builder.append("}");
+            }
+            builder.append("\n\t");
+            return builder.toString();
         }
         return "";
     }
@@ -103,18 +170,22 @@ public class DefaultLogHandler implements ForestLogHandler {
      * @return 请求日志字符串
      */
     protected String requestLoggingContent(RequestLogMessage requestLogMessage) {
-        StringBuilder builder = new StringBuilder();
-        builder.append("Request: \n\t");
+        final StringBuilder builder = new StringBuilder();
+        builder.append("Request ");
+        builder.append(asyncModeContent(requestLogMessage));
+        builder.append(backendContent(requestLogMessage));
+        builder.append(": \n\t");
         builder.append(retryContent(requestLogMessage));
+        builder.append(redirection(requestLogMessage));
         builder.append(proxyContent(requestLogMessage));
         builder.append(requestTypeChangeHistory(requestLogMessage));
         builder.append(requestLogMessage.getRequestLine());
-        String headers = requestLoggingHeaders(requestLogMessage);
+        final String headers = requestLoggingHeaders(requestLogMessage);
         if (StringUtils.isNotEmpty(headers)) {
             builder.append("\n\tHeaders: \n");
             builder.append(headers);
         }
-        String body = requestLoggingBody(requestLogMessage);
+        final String body = requestLoggingBody(requestLogMessage);
         if (StringUtils.isNotEmpty(body)) {
             builder.append("\n\tBody: ");
             builder.append(body);
@@ -128,12 +199,12 @@ public class DefaultLogHandler implements ForestLogHandler {
      * @return 请求响应日志字符串
      */
     protected String responseLoggingContent(ResponseLogMessage responseLogMessage) {
-        ForestResponse response = responseLogMessage.getResponse();
+        final ForestResponse response = responseLogMessage.getResponse();
+        final int status = responseLogMessage.getStatus();
         if (response != null && response.getException() != null) {
-            return "Response: [Network Error]: " + response.getException().getMessage();
+            return "Response: " + (status > 0 ? ", status = " + status + ", " : " ") + "[Network Error]: " + response.getException().getMessage();
         }
-        int status = responseLogMessage.getStatus();
-        if (status >= 0) {
+        if (status > 0) {
             return "Response: Status = " + responseLogMessage.getStatus() + ", Time = " + responseLogMessage.getTime() + "ms";
         } else {
             return "Response: [Network Error]: Unknown Network Error!";
@@ -145,6 +216,7 @@ public class DefaultLogHandler implements ForestLogHandler {
      * 打印日志内容
      * @param content 日志内容字符串
      */
+    @Override
     public void logContent(String content) {
         getLogger().info("[Forest] " + content);
     }
@@ -166,7 +238,7 @@ public class DefaultLogHandler implements ForestLogHandler {
      */
     @Override
     public void logRequest(RequestLogMessage requestLogMessage) {
-        String content = requestLoggingContent(requestLogMessage);
+        final String content = requestLoggingContent(requestLogMessage);
         logContent(content);
     }
 
@@ -176,7 +248,7 @@ public class DefaultLogHandler implements ForestLogHandler {
      */
     @Override
     public void logResponseStatus(ResponseLogMessage responseLogMessage) {
-        String content = responseLoggingContent(responseLogMessage);
+        final String content = responseLoggingContent(responseLogMessage);
         logContent(content);
     }
 
@@ -187,10 +259,11 @@ public class DefaultLogHandler implements ForestLogHandler {
     @Override
     public void logResponseContent(ResponseLogMessage responseLogMessage) {
         if (responseLogMessage.getResponse() != null) {
-            String content = responseLogMessage.getResponse().getContent();
+            final String content = responseLogMessage.getResponse().getContent();
             if (StringUtils.isNotEmpty(content)) {
                 logContent("Response Content:\n\t" + content);
             }
         }
     }
+
 }

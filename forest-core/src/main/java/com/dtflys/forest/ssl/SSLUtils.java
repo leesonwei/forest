@@ -16,12 +16,24 @@ import java.security.*;
  */
 public class SSLUtils {
 
-    public final static String SSL_2 = "SSLv2";
     public final static String SSL_3 = "SSLv3";
-    public final static String TLS_1_0 = "TLSv1.0";
+    public final static String TLS_1 = "TLSv1";
     public final static String TLS_1_1 = "TLSv1.1";
     public final static String TLS_1_2 = "TLSv1.2";
     public final static String TLS_1_3 = "TLSv1.3";
+
+    public final static String[] DEFAULT_PROTOCOLS_JDK8 = new String[] {
+            SSL_3, TLS_1, TLS_1_1, TLS_1_2
+    };
+
+    public final static String[] DEFAULT_PROTOCOLS_JDK11 = new String[] {
+            SSL_3, TLS_1, TLS_1_1, TLS_1_2, TLS_1_3
+    };
+
+
+    private final static X509TrustManager[] DEFAULT_TRUST_MANAGERS = new X509TrustManager[] {
+            new TrustAllManager()
+    };
 
     /**
      * 自定义SSL证书
@@ -30,12 +42,11 @@ public class SSLUtils {
      */
     public static SSLContext customSSL(ForestRequest request) {
         SSLContext sslContext = null;
-        SSLKeyStore fKeyStore = request.getKeyStore();
+        final SSLKeyStore fKeyStore = request.getKeyStore();
         final KeyStore keyStore = fKeyStore.getTrustStore();
-        String certPass = fKeyStore.getCertPass();
+        final String certPass = fKeyStore.getCertPass();
         if (keyStore != null) {
             try {
-
                  //密钥库
                 char[] certPassCharArray = certPass.toCharArray();
                 KeyManagerFactory kmf = KeyManagerFactory.getInstance("sunx509");
@@ -78,14 +89,13 @@ public class SSLUtils {
      * @throws KeyManagementException Key管理异常
      */
     public static SSLContext createIgnoreVerifySSL(String sslProtocol) throws NoSuchAlgorithmException, KeyManagementException {
-        SSLContext sc;
+        SSLContext sc = null;
         if (StringUtils.isEmpty(sslProtocol)) {
-            sc = SSLContexts.custom().build();
+            sc = SSLContext.getInstance("TLS");
         } else {
             sc = SSLContext.getInstance(sslProtocol);
-            TrustAllManager trustManager = new TrustAllManager();
-            sc.init(null, new TrustManager[] { trustManager }, null);
         }
+        sc.init(null, DEFAULT_TRUST_MANAGERS, null);
         return sc;
     }
 
@@ -106,7 +116,7 @@ public class SSLUtils {
         return SSLUtils.customSSL(request);
     }
 
-    public static SSLSocketFactory getSSLSocketFactory(ForestRequest request, String protocol) {
+    public static SSLSocketFactory getDefaultSSLSocketFactory(ForestRequest request, String protocol) {
         if (request == null) {
             return null;
         }

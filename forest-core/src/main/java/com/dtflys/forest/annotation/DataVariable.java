@@ -54,15 +54,20 @@ import java.lang.annotation.Target;
 @ParamLifeCycle(VariableLifeCycle.class)
 @Retention(RetentionPolicy.RUNTIME)
 @Target(value = ElementType.PARAMETER)
+@Deprecated
 public @interface DataVariable {
 
     /**
      * The name of the variable. The variable name can be referenced in some places (ex. request URL, Body, Headers)
+     *
+     * @return variable name
      */
     String value() default "";
 
     /**
      * The filters will do some processing for the variable value before sending request.
+     *
+     * @return filter name
      */
     String filter() default "";
 }

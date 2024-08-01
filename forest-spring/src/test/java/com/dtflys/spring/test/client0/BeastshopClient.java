@@ -10,8 +10,17 @@ import com.dtflys.forest.annotation.Request;
 public interface BeastshopClient {
 
     @Request(
-            url = "http://www.thebeastshop.com/",
-            timeout = 80000
+            url = "https://www.thebeastshop.com/",
+            timeout = 80000,
+            keyStore = "keystore1"
     )
     String index();
+
+
+    @Request(
+            url = "https://www.baidu.com/",
+            timeout = 80000,
+            keyStore = "keystore1"
+    )
+    String index2();
 }

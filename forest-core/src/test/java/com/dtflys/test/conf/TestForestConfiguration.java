@@ -4,6 +4,7 @@ import com.dtflys.forest.backend.HttpBackend;
 import com.dtflys.forest.backend.HttpBackendSelector;
 import com.dtflys.forest.config.ForestConfiguration;
 import com.dtflys.forest.converter.ForestConverter;
+import com.dtflys.forest.converter.json.ForestFastjson2Converter;
 import com.dtflys.forest.exceptions.ForestRuntimeException;
 import com.dtflys.forest.ssl.SSLUtils;
 import com.dtflys.forest.utils.ForestDataType;
@@ -21,10 +22,15 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.dtflys.forest.mapping.MappingParameter.TARGET_BODY;
 import static com.dtflys.forest.mapping.MappingParameter.TARGET_HEADER;
-import static junit.framework.Assert.*;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 /**
  * @author gongjun[jun.gong@thebeastshop.com]
@@ -34,13 +40,13 @@ public class TestForestConfiguration {
 
 
     @Test
-    public void testBackend() throws ClassNotFoundException {
-        ForestConfiguration configuration = ForestConfiguration.configuration();
+    public void testBackend() {
+        ForestConfiguration configuration = ForestConfiguration.createConfiguration();
         configuration.setBackendName("okhttp3");
-        Assert.assertEquals("okhttp3", configuration.getBackend().getName());
+        assertEquals("okhttp3", configuration.getBackend().getName());
         configuration.setBackend(null);
         configuration.setBackendName("httpclient");
-        Assert.assertEquals("httpclient", configuration.getBackend().getName());
+        assertEquals("httpclient", configuration.getBackend().getName());
 
         HttpBackendSelector originSelector = new HttpBackendSelector();
         HttpBackendSelector selector = Mockito.spy(originSelector);
@@ -67,11 +73,12 @@ public class TestForestConfiguration {
 
     @Test
     public void testDefault() {
-        ForestConfiguration configuration = ForestConfiguration.configuration();
+        ForestConfiguration configuration = ForestConfiguration.createConfiguration();
         assertEquals("forestConfiguration" + configuration.hashCode(),
                 configuration.getId());
         assertEquals(Integer.valueOf(3000), configuration.getTimeout());
-        assertEquals(Integer.valueOf(2000), configuration.getConnectTimeout());
+        assertEquals(null, configuration.getConnectTimeout());
+        assertEquals(null, configuration.getReadTimeout());
         assertEquals(Integer.valueOf(500), configuration.getMaxConnections());
         assertEquals(Integer.valueOf(500), configuration.getMaxRouteConnections());
         assertNotNull(configuration.getJsonConverter());
@@ -80,11 +87,11 @@ public class TestForestConfiguration {
 
     @Test
     public void testCustomized() {
-        ForestConfiguration configuration = ForestConfiguration.configuration();
-        configuration.setRetryCount(3);
+        ForestConfiguration configuration = ForestConfiguration.createConfiguration();
+        configuration.setMaxRetryCount(3);
 //        configuration.setId("config_2");
 //        assertEquals("config_2", configuration.getId());
-        assertEquals(Integer.valueOf(3), configuration.getRetryCount());
+        assertEquals(Integer.valueOf(3), configuration.getMaxRetryCount());
         configuration.setMaxConnections(123);
         assertEquals(Integer.valueOf(123), configuration.getMaxConnections());
         configuration.setMaxRouteConnections(222);
@@ -97,7 +104,7 @@ public class TestForestConfiguration {
 
     @Test
     public void testVars() {
-        ForestConfiguration configuration = ForestConfiguration.configuration();
+        ForestConfiguration configuration = ForestConfiguration.createConfiguration();
         configuration.setVariableValue("name", "Peter");
         configuration.setVariableValue("baseUrl", "http://abc.com");
         assertEquals("Peter", configuration.getVariableValue("name"));
@@ -105,17 +112,20 @@ public class TestForestConfiguration {
 
         Map<String, Object> varMap = new HashMap<>();
         varMap.put("name", "Linda");
-        varMap.put("abc", "123");
+        varMap.put("abc", 123);
         configuration.setVariables(varMap);
-        assertEquals("Linda", configuration.getVariableValue("name"));
-        assertEquals("123", configuration.getVariableValue("abc"));
-        assertEquals(varMap, configuration.getVariables());
+        assertThat(configuration.getVariableValue("name")).isEqualTo("Linda");
+        assertThat(configuration.getVariableValue("abc")).isEqualTo(123);
+        AtomicInteger value = new AtomicInteger(0);
+        configuration.setVariableValue("foo", (method) -> value.getAndIncrement());
+        assertThat(configuration.getVariableValue("foo")).isEqualTo(0);
+        assertThat(configuration.getVariableValue("foo")).isEqualTo(1);
     }
 
 
     @Test
     public void testDefaultParameters() {
-        ForestConfiguration configuration = ForestConfiguration.configuration();
+        ForestConfiguration configuration = ForestConfiguration.createConfiguration();
         List<RequestNameValue> defaultParameters = new LinkedList<>();
         defaultParameters.add(new RequestNameValue("name", "Peter", TARGET_BODY));
         defaultParameters.add(new RequestNameValue("age", "15", TARGET_BODY));
@@ -125,7 +135,7 @@ public class TestForestConfiguration {
 
     @Test
     public void testDefaultHeaders() {
-        ForestConfiguration configuration = ForestConfiguration.configuration();
+        ForestConfiguration configuration = ForestConfiguration.createConfiguration();
         List<RequestNameValue> defaultHeaders = new LinkedList<>();
         defaultHeaders.add(new RequestNameValue("Accept", "text/html", TARGET_HEADER));
         configuration.setDefaultHeaders(defaultHeaders);
@@ -134,7 +144,7 @@ public class TestForestConfiguration {
 
     @Test
     public void testConverterMap() {
-        ForestConfiguration configuration = ForestConfiguration.configuration();
+        ForestConfiguration configuration = ForestConfiguration.createConfiguration();
         assertNotNull(configuration.getConverterMap());
         Map<ForestDataType, ForestConverter> converterMap = new HashMap<>();
         converterMap.put(ForestDataType.JSON, new ForestFastjsonConverter());
@@ -166,25 +176,44 @@ public class TestForestConfiguration {
     public void testJSONConverterSelect() throws Throwable {
         JSONConverterSelector jsonConverterSelector = new JSONConverterSelector();
         JSONConverterSelector spy = Mockito.spy(jsonConverterSelector);
-        Mockito.when(spy.checkFastJSONClass())
-                .thenThrow(new ClassNotFoundException("com.alibaba.fastjson.JSON"));
-
         ForestJsonConverter jsonConverter = spy.select();
-        assertNotNull(jsonConverter);
-        assertTrue(jsonConverter instanceof ForestJacksonConverter);
+        assertThat(jsonConverter).isNotNull().isInstanceOf(ForestFastjson2Converter.class);
+
 
         jsonConverterSelector = new JSONConverterSelector();
         spy = Mockito.spy(jsonConverterSelector);
+        Mockito.when(spy.checkFastJSON2Class())
+                .thenThrow(new ClassNotFoundException("com.alibaba.fastjson2.JSON"));
+
+        jsonConverter = spy.select();
+        assertThat(jsonConverter).isNotNull().isInstanceOf(ForestFastjsonConverter.class);
+
+
+        jsonConverterSelector = new JSONConverterSelector();
+        spy = Mockito.spy(jsonConverterSelector);
+        Mockito.when(spy.checkFastJSON2Class())
+                .thenThrow(new ClassNotFoundException("com.alibaba.fastjson2.JSON"));
+        Mockito.when(spy.checkFastJSONClass())
+                .thenThrow(new ClassNotFoundException("com.alibaba.fastjson.JSON"));
+
+        jsonConverter = spy.select();
+        assertThat(jsonConverter).isNotNull().isInstanceOf(ForestJacksonConverter.class);
+
+        jsonConverterSelector = new JSONConverterSelector();
+        spy = Mockito.spy(jsonConverterSelector);
+        Mockito.when(spy.checkFastJSON2Class())
+                .thenThrow(new ClassNotFoundException("com.alibaba.fastjson2.JSON"));
         Mockito.when(spy.checkFastJSONClass())
                 .thenThrow(new ClassNotFoundException("com.alibaba.fastjson.JSON"));
         Mockito.when(spy.checkJacsonClass())
                 .thenThrow(new ClassNotFoundException("com.fasterxml.jackson.databind.ObjectMapper"));
         jsonConverter = spy.select();
-        assertNotNull(jsonConverter);
-        assertTrue(jsonConverter instanceof ForestGsonConverter);
+        assertThat(jsonConverter).isNotNull().isInstanceOf(ForestGsonConverter.class);
 
         jsonConverterSelector = new JSONConverterSelector();
         spy = Mockito.spy(jsonConverterSelector);
+        Mockito.when(spy.checkFastJSON2Class())
+                .thenThrow(new ClassNotFoundException("com.alibaba.fastjson2.JSON"));
         Mockito.when(spy.checkFastJSONClass())
                 .thenThrow(new ClassNotFoundException("com.alibaba.fastjson.JSON"));
         Mockito.when(spy.checkJacsonClass())
@@ -192,7 +221,7 @@ public class TestForestConfiguration {
         Mockito.when(spy.checkGsonClass())
                 .thenThrow(new ClassNotFoundException("com.google.gson.JsonParser"));
         jsonConverter = spy.select();
-        assertNull(jsonConverter);
+        assertThat(jsonConverter).isNull();
     }
 
 }

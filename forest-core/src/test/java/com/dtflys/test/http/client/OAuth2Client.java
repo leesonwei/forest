@@ -1,7 +1,9 @@
 package com.dtflys.test.http.client;
 
 import com.dtflys.forest.annotation.GetRequest;
+import com.dtflys.forest.backend.okhttp3.OkHttp3;
 import com.dtflys.forest.extensions.OAuth2;
+import com.dtflys.test.handler.OAuth2TokenTestHandler;
 
 /**
  * @author HouKunLin
@@ -67,4 +69,21 @@ public interface OAuth2Client {
     )
     @GetRequest(url = "http://localhost:${port}/auth/test/client_credentials_at_url")
     String testClientCredentialsTokenAtURL();
+
+
+    /**
+     * 测试使用自定义响应体
+     */
+    @OAuth2(
+            tokenUri = "http://localhost:${port}/auth/oauth/token/definition",
+            clientId = "password",
+            clientSecret = "123456",
+            grantType = OAuth2.GrantType.PASSWORD,
+            scope = "any",
+            username = "root",
+            password = "123456",
+            OAuth2TokenHandler = OAuth2TokenTestHandler.class
+    )
+    @GetRequest(url = "http://localhost:${port}/auth/test/password")
+    String testDefinitionOAuth2();
 }

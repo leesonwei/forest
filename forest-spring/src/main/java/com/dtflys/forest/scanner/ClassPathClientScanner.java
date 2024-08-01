@@ -1,10 +1,9 @@
 package com.dtflys.forest.scanner;
 
 import com.dtflys.forest.file.SpringResource;
-import com.dtflys.forest.http.ForestRequestBody;
-import com.dtflys.forest.http.body.MultipartRequestBodyBuilder;
+import com.dtflys.forest.http.body.SpringMultipartRequestBodyBuilder;
 import com.dtflys.forest.http.body.RequestBodyBuilder;
-import com.dtflys.forest.http.body.ResourceRequestBodyBuilder;
+import com.dtflys.forest.http.body.SpringResourceRequestBodyBuilder;
 import com.dtflys.forest.multipart.ForestMultipartFactory;
 import com.dtflys.forest.utils.ClientFactoryBeanUtils;
 import org.springframework.beans.factory.annotation.AnnotatedBeanDefinition;
@@ -13,12 +12,12 @@ import org.springframework.beans.factory.support.BeanDefinitionRegistry;
 import org.springframework.beans.factory.support.GenericBeanDefinition;
 import org.springframework.context.annotation.ClassPathBeanDefinitionScanner;
 import org.springframework.core.io.Resource;
+import org.springframework.core.type.AnnotationMetadata;
+import org.springframework.core.type.ClassMetadata;
 import org.springframework.core.type.classreading.MetadataReader;
 import org.springframework.core.type.classreading.MetadataReaderFactory;
-import org.springframework.core.type.filter.TypeFilter;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.Set;
 
 /**
@@ -26,6 +25,27 @@ import java.util.Set;
  * @since 2017-04-24 14:46
  */
 public class ClassPathClientScanner extends ClassPathBeanDefinitionScanner {
+
+    private final static String[] FOREST_METHOD_ANNOTATION_NAMES = new String[] {
+            "com.dtflys.forest.annotation.Backend",
+            "com.dtflys.forest.annotation.Headers",
+            "com.dtflys.forest.annotation.Address",
+            "com.dtflys.forest.annotation.Request",
+            "com.dtflys.forest.annotation.Get",
+            "com.dtflys.forest.annotation.GetRequest",
+            "com.dtflys.forest.annotation.Post",
+            "com.dtflys.forest.annotation.PostRequest",
+            "com.dtflys.forest.annotation.Put",
+            "com.dtflys.forest.annotation.PutRequest",
+            "com.dtflys.forest.annotation.HeadRequest",
+            "com.dtflys.forest.annotation.Options",
+            "com.dtflys.forest.annotation.OptionsRequest",
+            "com.dtflys.forest.annotation.Patch",
+            "com.dtflys.forest.annotation.PatchRequest",
+            "com.dtflys.forest.annotation.Trace",
+            "com.dtflys.forest.annotation.TraceRequest",
+    } ;
+
 
     private final String configurationId;
 
@@ -43,16 +63,69 @@ public class ClassPathClientScanner extends ClassPathBeanDefinitionScanner {
      */
     public void registerMultipartTypes() {
         ForestMultipartFactory.registerFactory(Resource.class, SpringResource.class);
-        RequestBodyBuilder.registerBodyBuilder(Resource.class, new ResourceRequestBodyBuilder());
+        RequestBodyBuilder.registerBodyBuilder(Resource.class, new SpringResourceRequestBodyBuilder());
         try {
             Class multipartFileClass = Class.forName("org.springframework.web.multipart.MultipartFile");
             Class springMultipartFileClass = Class.forName("com.dtflys.forest.file.SpringMultipartFile");
             ForestMultipartFactory.registerFactory(multipartFileClass, springMultipartFileClass);
-            RequestBodyBuilder.registerBodyBuilder(multipartFileClass, new MultipartRequestBodyBuilder());
-        } catch (ClassNotFoundException e) {
+            RequestBodyBuilder.registerBodyBuilder(multipartFileClass, new SpringMultipartRequestBodyBuilder());
+        } catch (Throwable th) {
         }
     }
 
+    private boolean interfaceFilter(MetadataReader metadataReader, MetadataReaderFactory metadataReaderFactory) {
+        ClassMetadata classMetadata = metadataReader.getClassMetadata();
+        if (!classMetadata.isInterface() || classMetadata.isFinal()) {
+            return false;
+        }
+
+        String[] superClassNames = metadataReader.getClassMetadata().getInterfaceNames();
+        boolean hasSuperForestClient = false;
+        for (String superClassName : superClassNames) {
+            try {
+                MetadataReader superMetaReader = metadataReaderFactory.getMetadataReader(superClassName);
+                hasSuperForestClient = interfaceFilter(superMetaReader, metadataReaderFactory);
+            } catch (IOException e) {
+            }
+            if (hasSuperForestClient) {
+                return true;
+            }
+        }
+
+        AnnotationMetadata annotationMetadata = metadataReader.getAnnotationMetadata();
+        for (String annotationTypeName : annotationMetadata.getAnnotationTypes()) {
+            if ("com.dtflys.forest.annotation.ForestClient".equals(annotationTypeName)) {
+                return true;
+            }
+            if ("com.dtflys.forest.annotation.BaseRequest".equals(annotationTypeName)) {
+                return true;
+            }
+        }
+        for (String methodAnnName : FOREST_METHOD_ANNOTATION_NAMES) {
+            if (annotationMetadata.hasAnnotatedMethods(methodAnnName)) {
+                return true;
+            }
+        }
+
+/*
+        Set<String> baseAnnNames = annotationMetadata.getAnnotationTypes();
+        for (String annName : baseAnnNames) {
+            try {
+                Class<?> annType = Class.forName(annName);
+                Annotation lcAnn = annType.getAnnotation(BaseLifeCycle.class);
+                if (lcAnn != null) {
+                    return true;
+                }
+                lcAnn = annType.getAnnotation(MethodLifeCycle.class);
+                if (lcAnn != null) {
+                    return true;
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+*/
+        return false;
+    }
 
     /**
      * 注册过滤器
@@ -60,21 +133,14 @@ public class ClassPathClientScanner extends ClassPathBeanDefinitionScanner {
     public void registerFilters() {
         if (allInterfaces) {
             // include all interfaces
-            addIncludeFilter(new TypeFilter() {
-                @Override
-                public boolean match(MetadataReader metadataReader, MetadataReaderFactory metadataReaderFactory) throws IOException {
-                    return true;
-                }
-            });
+            addIncludeFilter((metadataReader, metadataReaderFactory) ->
+                    interfaceFilter(metadataReader, metadataReaderFactory));
         }
 
         // exclude package-info.java
-        addExcludeFilter(new TypeFilter() {
-            @Override
-            public boolean match(MetadataReader metadataReader, MetadataReaderFactory metadataReaderFactory) throws IOException {
-                String className = metadataReader.getClassMetadata().getClassName();
-                return className.endsWith("package-info");
-            }
+        addExcludeFilter((metadataReader, metadataReaderFactory) -> {
+            String className = metadataReader.getClassMetadata().getClassName();
+            return className.endsWith("package-info");
         });
     }
 
@@ -82,12 +148,6 @@ public class ClassPathClientScanner extends ClassPathBeanDefinitionScanner {
         GenericBeanDefinition definition;
         for (BeanDefinitionHolder holder : beanDefinitions) {
             definition = (GenericBeanDefinition) holder.getBeanDefinition();
-
-            if (logger.isDebugEnabled()) {
-                logger.debug("[Forest] Creating Forest Client Bean with name '" + holder.getBeanName()
-                        + "' and Proxy of '" + definition.getBeanClassName() + "' client interface");
-            }
-
             String beanClassName = definition.getBeanClassName();
             ClientFactoryBeanUtils.setupClientFactoryBean(definition, configurationId, beanClassName);
             logger.info("[Forest] Created Forest Client Bean with name '" + holder.getBeanName()
@@ -105,10 +165,9 @@ public class ClassPathClientScanner extends ClassPathBeanDefinitionScanner {
     @Override
     public Set<BeanDefinitionHolder> doScan(String... basePackages) {
         Set<BeanDefinitionHolder> beanDefinitions = super.doScan(basePackages);
-        if (beanDefinitions.isEmpty()) {
-            logger.warn("[Forest] No Forest client is found in package '" + Arrays.toString(basePackages) + "'.");
+        if (!beanDefinitions.isEmpty()) {
+            processBeanDefinitions(beanDefinitions);
         }
-        processBeanDefinitions(beanDefinitions);
         return beanDefinitions;
     }
 

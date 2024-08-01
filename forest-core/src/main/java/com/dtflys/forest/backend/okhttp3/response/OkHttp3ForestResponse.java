@@ -4,15 +4,21 @@ import com.dtflys.forest.backend.ContentType;
 import com.dtflys.forest.exceptions.ForestRuntimeException;
 import com.dtflys.forest.http.ForestRequest;
 import com.dtflys.forest.http.ForestResponse;
+import com.dtflys.forest.utils.GzipUtils;
+import com.dtflys.forest.utils.ReflectUtils;
 import com.dtflys.forest.utils.StringUtils;
 import okhttp3.Headers;
 import okhttp3.MediaType;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.util.Date;
+import java.util.List;
+import java.util.Map;
 
 /**
  * @author gongjun[jun.gong@thebeastshop.com]
@@ -34,43 +40,75 @@ public class OkHttp3ForestResponse extends ForestResponse {
         this.okResponse = okResponse;
         if (okResponse == null) {
             this.body = null;
-            this.statusCode = 404;
+            this.statusCode = null;
             return;
         }
+
         this.body = okResponse.body();
         this.statusCode = okResponse.code();
+        this.reasonPhrase = okResponse.message();
         setupHeaders();
+        setupContentEncoding();
+        // 判断是否将Response数据按GZIP来解压
+        setupGzip();
         if (body == null) {
             return;
         }
-        setupContentTypeAndEncoding();
-        if (contentType == null || contentType.isEmpty()) {
-            this.content = readContentAsString();
-        } else if (!request.isDownloadFile() && contentType.canReadAsString()) {
-            this.content = readContentAsString();
-        } else if (contentType.canReadAsBinaryStream()) {
-            StringBuilder builder = new StringBuilder();
-            builder.append("[content-type: ")
-                    .append(contentType.toString());
+        setupContentTypeAndCharset();
+        setupContent();
+        this.contentLength = body.contentLength();
+    }
+
+    /**
+     * @author designer[19901753334@163.com]
+     * @author gongjun[dt_flys@hotmail.com]
+     * @date 2021/12/8 23:51
+     **/
+    private void setupContent() {
+        if (request.isDownloadFile()
+                || InputStream.class.isAssignableFrom(request.getMethod().getReturnClass())
+                || InputStream.class.isAssignableFrom(ReflectUtils.toClass(request.getLifeCycleHandler().getResultType()))
+                || (contentType != null && contentType.canReadAsBinaryStream())) {
+            final StringBuilder builder = new StringBuilder();
+            builder.append("[stream content-type: ")
+                    .append(contentType == null ? "undefined" : contentType.toString());
             if (contentEncoding != null) {
-                builder.append("; encoding: ")
+                builder.append("; content-encoding: ")
                         .append(contentEncoding);
+            }
+            if (charset != null) {
+                builder.append("; charset: ")
+                        .append(charset);
             }
             builder.append("; length: ")
                     .append(contentLength)
                     .append("]");
             this.content = builder.toString();
+        } else {
+            this.content = readContentAsString();
+        }
+    }
+
+    /**
+     * @author designer[19901753334@163.com]
+     * @date 2021/12/8 23:51
+     **/
+    private void setupGzip() {
+        if(this.contentEncoding != null && !request.isDecompressResponseGzipEnabled()){
+            isGzip = GzipUtils.isGzip(contentEncoding);
+        } else {
+            isGzip = true;
         }
     }
 
     private String readContentAsString() {
         try {
-            bytes = body.bytes();
+            bytes = getByteArray();
             if (bytes == null) {
                 return null;
             }
             return byteToString(bytes);
-        } catch (IOException e) {
+        } catch (Exception e) {
             throw new ForestRuntimeException(e);
         }
     }
@@ -78,13 +116,23 @@ public class OkHttp3ForestResponse extends ForestResponse {
     private void setupHeaders() {
         if (okResponse != null) {
             Headers hs = okResponse.headers();
-            for (String name : hs.names()) {
-                headers.addHeader(name, hs.get(name));
+            Map<String, List<String>> hsMap = hs.toMultimap();
+            for (Map.Entry<String, List<String>> entry : hsMap.entrySet()) {
+                String name = entry.getKey();
+                List<String> values = entry.getValue();
+                for (String value : values) {
+                    headers.addHeader(name, value);
+                }
             }
         }
     }
 
-    private void setupContentTypeAndEncoding() {
+
+    /**
+     * @author designer[19901753334@163.com]
+     * @date 2021/12/8 23:51
+     **/
+    private void setupContentTypeAndCharset() {
         MediaType mediaType = body.contentType();
         if (mediaType != null) {
             String type = mediaType.type();
@@ -92,12 +140,50 @@ public class OkHttp3ForestResponse extends ForestResponse {
             this.contentType = new ContentType(type, subType);
             Charset charset = mediaType.charset();
             if (charset != null) {
-                this.contentEncoding = charset.name();
+                this.charset = charset.name();
+                return;
             }
         }
+        setupResponseCharset();
+    }
+
+
+    /**
+     * @author designer[19901753334@163.com]
+     * @date 2021/12/8 23:51
+     **/
+    private void setupResponseCharset() {
+        if (StringUtils.isNotBlank(request.getResponseEncode())) {
+            this.charset = request.getResponseEncode();
+        } else if (contentType != null) {
+            this.charset = this.contentType.getCharsetName();
+        } else {
+            if (this.contentEncoding != null) {
+                try {
+                    Charset.forName(this.contentEncoding);
+                    this.charset = this.contentEncoding;
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+    }
+
+    /**
+     * @author designer[19901753334@163.com]
+     * @date 2021/12/8 23:51
+     **/
+    private void setupContentEncoding() {
         if (StringUtils.isEmpty(this.contentEncoding)) {
             this.contentEncoding = okResponse.header("Content-Encoding");
         }
+    }
+
+    @Override
+    public InputStream getInputStream() throws Exception {
+        if (bytes != null) {
+            return new ByteArrayInputStream(getByteArray());
+        }
+        return body.byteStream();
     }
 
     @Override
@@ -111,10 +197,29 @@ public class OkHttp3ForestResponse extends ForestResponse {
             if (body == null) {
                 return null;
             } else {
-                bytes = body.bytes();
+                try {
+                    bytes = body.bytes();
+                } finally {
+                    close();
+                }
             }
         }
         return bytes;
     }
 
+    @Override
+    public void close() {
+        if (closed) {
+            return;
+        }
+        if (body != null) {
+            try {
+                body.close();
+            } catch (Throwable th) {
+                throw new ForestRuntimeException(th);
+            } finally {
+                closed = true;
+            }
+        }
+    }
 }

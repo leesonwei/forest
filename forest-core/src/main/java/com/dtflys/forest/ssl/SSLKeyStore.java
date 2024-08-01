@@ -1,7 +1,10 @@
 package com.dtflys.forest.ssl;
 
 import com.dtflys.forest.exceptions.ForestRuntimeException;
+import com.dtflys.forest.utils.StringUtils;
 
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.TrustManager;
 import java.io.*;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
@@ -35,17 +38,42 @@ public class SSLKeyStore {
 
     protected String[] cipherSuites;
 
+    protected TrustManager trustManager;
 
-    public SSLKeyStore(String id, String filePath, String keystorePass, String certPass) {
-        this(id, DEFAULT_KEYSTORE_TYPE, filePath, keystorePass, certPass);
+    protected HostnameVerifier hostnameVerifier;
+
+    protected SSLSocketFactoryBuilder sslSocketFactoryBuilder;
+
+    public SSLKeyStore(String id, String filePath, String keystorePass, String certPass,
+                       TrustManager trustManager,
+                       HostnameVerifier hostnameVerifier,
+                       SSLSocketFactoryBuilder sslSocketFactoryBuilder) {
+        this(
+                id,
+                DEFAULT_KEYSTORE_TYPE,
+                filePath,
+                keystorePass,
+                certPass,
+                trustManager,
+                hostnameVerifier,
+                sslSocketFactoryBuilder);
     }
 
-    public SSLKeyStore(String id, String keystoreType, String filePath, String keystorePass, String certPass) {
+
+
+    public SSLKeyStore(String id, String keystoreType, String filePath,
+                       String keystorePass, String certPass,
+                       TrustManager trustManager,
+                       HostnameVerifier hostnameVerifier,
+                       SSLSocketFactoryBuilder sslSocketFactoryBuilder) {
         this.id = id;
         this.keystoreType = keystoreType;
         this.filePath = filePath;
         this.keystorePass = keystorePass;
         this.certPass = certPass;
+        this.trustManager = trustManager;
+        this.hostnameVerifier = hostnameVerifier;
+        this.sslSocketFactoryBuilder = sslSocketFactoryBuilder;
         init();
         loadTrustStore();
     }
@@ -74,6 +102,8 @@ public class SSLKeyStore {
         this.protocols = protocols;
     }
 
+
+
     public String[] getCipherSuites() {
         return cipherSuites;
     }
@@ -82,27 +112,55 @@ public class SSLKeyStore {
         this.cipherSuites = cipherSuites;
     }
 
+    public TrustManager getTrustManager() {
+        return trustManager;
+    }
+
+    public void setTrustManager(TrustManager trustManager) {
+        this.trustManager = trustManager;
+    }
+
+    public HostnameVerifier getHostnameVerifier() {
+        return hostnameVerifier;
+    }
+
+    public void setHostnameVerifier(HostnameVerifier hostnameVerifier) {
+        this.hostnameVerifier = hostnameVerifier;
+    }
+
+    public SSLSocketFactoryBuilder getSslSocketFactoryBuilder() {
+        return sslSocketFactoryBuilder;
+    }
+
+    public void setSslSocketFactoryBuilder(SSLSocketFactoryBuilder sslSocketFactoryBuilder) {
+        this.sslSocketFactoryBuilder = sslSocketFactoryBuilder;
+    }
+
+
+
     public void init() {
-        String path = filePath.trim();
-        File file = new File(path);
-        if (!file.exists()) {
-            java.net.URL url = getClass().getClassLoader().getResource(path);
-            if (url == null) {
-                throw new ForestRuntimeException(
-                        "The file of SSL KeyStore \"" + id + "\" " + filePath + " cannot be found!");
-            }
-            path = url.getFile();
-            file = new File(path);
+        if (StringUtils.isNotBlank(filePath)) {
+            String path = filePath.trim();
+            File file = new File(path);
             if (!file.exists()) {
-                throw new ForestRuntimeException(
-                        "The file of SSL KeyStore \"" + id + "\" " + filePath + " cannot be found!");
+                java.net.URL url = getClass().getClassLoader().getResource(path);
+                if (url == null) {
+                    throw new ForestRuntimeException(
+                            "The file of SSL KeyStore \"" + id + "\" " + filePath + " cannot be found!");
+                }
+                path = url.getFile();
+                file = new File(path);
+                if (!file.exists()) {
+                    throw new ForestRuntimeException(
+                            "The file of SSL KeyStore \"" + id + "\" " + filePath + " cannot be found!");
+                }
             }
-        }
-        try {
-            inputStream = new FileInputStream(file);
-        } catch (FileNotFoundException e) {
-            throw new ForestRuntimeException(
-                    "An error occurred while reading he file of SSL KeyStore \"\" + id + \"\"", e);
+            try {
+                inputStream = new FileInputStream(file);
+            } catch (FileNotFoundException e) {
+                throw new ForestRuntimeException(
+                        "An error occurred while reading he file of SSL KeyStore \"\" + id + \"\"", e);
+            }
         }
     }
 

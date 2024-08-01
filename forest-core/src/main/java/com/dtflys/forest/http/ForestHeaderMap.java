@@ -1,3 +1,27 @@
+/*
+ * The MIT License (MIT)
+ *
+ * Copyright (c) 2016 Jun Gong
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 package com.dtflys.forest.http;
 
 import java.util.*;
@@ -9,16 +33,24 @@ import java.util.*;
  * @author gongjun[jun.gong@thebeastshop.com]
  * @since 2020-08-11 12:45
  */
-public class ForestHeaderMap implements Map<String, String> {
+public class ForestHeaderMap implements Map<String, String>, Cloneable {
 
     private final List<ForestHeader> headers;
 
-    public ForestHeaderMap(List<ForestHeader> headers) {
+    private ForestCookieHeader cookieHeader = null;
+
+    private final List<ForestCookie> requestCookies = new LinkedList<>();
+
+    private final HasURL hasURL;
+
+    public ForestHeaderMap(List<ForestHeader> headers, HasURL hasURL) {
         this.headers = headers;
+        this.hasURL = hasURL;
     }
 
-    public ForestHeaderMap() {
+    public ForestHeaderMap(HasURL hasURL) {
         this.headers = new LinkedList<>();
+        this.hasURL = hasURL;
     }
 
     /**
@@ -35,12 +67,16 @@ public class ForestHeaderMap implements Map<String, String> {
         return size() == 0;
     }
 
+    public HasURL getHasURL() {
+        return hasURL;
+    }
+
     @Override
     public boolean containsKey(Object key) {
         if (key == null) {
             return false;
         }
-        String name = key.toString();
+        final String name = key.toString();
         for (ForestHeader header : headers) {
             if (header.getName().equalsIgnoreCase(name)) {
                 return true;
@@ -52,7 +88,7 @@ public class ForestHeaderMap implements Map<String, String> {
     @Override
     public boolean containsValue(Object value) {
         for (ForestHeader header : headers) {
-            Object headerVal = header.getValue();
+            final Object headerVal = header.getValue();
             if (headerVal == null) {
                 if (value == null) {
                     return true;
@@ -71,8 +107,8 @@ public class ForestHeaderMap implements Map<String, String> {
         if (key == null) {
             return null;
         }
-        String name = key.toString();
-        ForestHeader header = getHeader(name);
+        final String name = key.toString();
+        final ForestHeader header = getHeader(name);
         if (header == null) {
             return null;
         }
@@ -82,11 +118,28 @@ public class ForestHeaderMap implements Map<String, String> {
 
     @Override
     public String put(String key, String value) {
-        ForestHeader header = getHeader(key);
+        final ForestHeader header = getHeader(key);
         if (header != null) {
-            header.setValue(value);
+            if (header instanceof SimpleHeader) {
+                ((SimpleHeader) header).setValue(value);
+            } else {
+                this.remove(header);
+                this.addHeader(key, value);
+            }
+        } else if ("Cookie".equalsIgnoreCase(key)) {
+            final ForestCookie cookie = ForestCookie.parse(hasURL.url().toURLString(), value);
+            if (cookie != null) {
+                final ForestSetCookieHeader cookieHeader = ForestSetCookieHeader.fromCookie(hasURL, cookie);
+                addHeader(cookieHeader);
+            }
+        } else if ("Set-Cookie".equalsIgnoreCase(key)) {
+            final ForestCookie cookie = ForestCookie.parse(hasURL.url().toURLString(), value);
+            if (cookie != null) {
+                final ForestSetCookieHeader cookieHeader = ForestSetCookieHeader.fromSetCookie(hasURL, cookie);
+                addHeader(cookieHeader);
+            }
         } else {
-            ForestHeader newHeader = new ForestHeader(key, value);
+            final ForestHeader newHeader = new SimpleHeader(key, value);
             addHeader(newHeader);
         }
         return value;
@@ -103,11 +156,11 @@ public class ForestHeaderMap implements Map<String, String> {
         if (key == null) {
             return null;
         }
-        String name = key.toString();
+        final String name = key.toString();
         for (int i = headers.size() - 1; i >= 0; i--) {
-            ForestHeader header = headers.get(i);
+            final ForestHeader header = headers.get(i);
             if (header.getName().equalsIgnoreCase(name)) {
-                ForestHeader removedHeader = headers.remove(i);
+                final ForestHeader removedHeader = headers.remove(i);
                 return removedHeader.getValue();
             }
         }
@@ -120,8 +173,8 @@ public class ForestHeaderMap implements Map<String, String> {
             return;
         }
         for (Entry<? extends String, ? extends String> entry : m.entrySet()) {
-            String name = entry.getKey();
-            String value = entry.getValue();
+            final String name = entry.getKey();
+            final String value = entry.getValue();
             put(name, value);
         }
     }
@@ -133,7 +186,7 @@ public class ForestHeaderMap implements Map<String, String> {
 
     @Override
     public Set<String> keySet() {
-        Set<String> set = new HashSet<>();
+        final Set<String> set = new HashSet<>();
         for (ForestHeader header : headers) {
             set.add(header.getName());
         }
@@ -142,9 +195,9 @@ public class ForestHeaderMap implements Map<String, String> {
 
     @Override
     public Collection<String> values() {
-        List<String> list = new ArrayList<>();
+        final List<String> list = new ArrayList<>();
         for (ForestHeader header : headers) {
-            String val = header.getValue();
+            final String val = header.getValue();
             if (val != null) {
                 list.add(val);
             }
@@ -154,7 +207,7 @@ public class ForestHeaderMap implements Map<String, String> {
 
     @Override
     public Set<Entry<String, String>> entrySet() {
-        Set<Entry<String, String>> set = new HashSet<>();
+        final Set<Entry<String, String>> set = new HashSet<>();
         for (ForestHeader header : headers) {
             Entry<String, String> entry = new Entry<String, String>() {
 
@@ -170,7 +223,7 @@ public class ForestHeaderMap implements Map<String, String> {
 
                 @Override
                 public String setValue(String value) {
-                    String oldValue = header.getValue();
+                    final String oldValue = header.getValue();
                     header.setValue(value);
                     return oldValue;
                 }
@@ -186,7 +239,7 @@ public class ForestHeaderMap implements Map<String, String> {
      * @return 请求头的值
      */
     public String getValue(String name) {
-        ForestHeader header = getHeader(name);
+        final ForestHeader header = getHeader(name);
         if (header != null) {
             return header.getValue();
         }
@@ -199,7 +252,7 @@ public class ForestHeaderMap implements Map<String, String> {
      * @return 请求头的值列表
      */
     public List<String> getValues(String name) {
-        List<String> results = new ArrayList<>(2);
+        final List<String> results = new ArrayList<>(2);
         for (ForestHeader header : headers) {
             if (header.getName().equalsIgnoreCase(name)) {
                 results.add(header.getValue());
@@ -210,6 +263,7 @@ public class ForestHeaderMap implements Map<String, String> {
 
     /**
      * 根据请求头名称获取请求头对象
+     *
      * @param name 请求头名称
      * @return 请求头对象，{@link ForestHeader}类实例
      */
@@ -222,13 +276,54 @@ public class ForestHeaderMap implements Map<String, String> {
         return null;
     }
 
+
+    /**
+     * 获取Set-Cookie头中的Cookie列表
+     *
+     * @return {@link ForestCookie}对象列表
+     * @since 1.5.23
+     */
+    public List<ForestCookie> getSetCookies() {
+        final List<ForestCookie> list = new ArrayList<>();
+        for (ForestHeader header : headers) {
+            if (header instanceof ForestSetCookieHeader) {
+                list.add(((ForestSetCookieHeader) header).getCookie());
+            }
+        }
+        return list;
+    }
+
+
+    /**
+     * 根据Set-Cookie头的Cookie名称获取Cookie
+     *
+     * @param name Cookie名称
+     * @return {@link ForestCookie}对象实例
+     * @since 1.5.23
+     */
+    public ForestCookie getSetCookie(String name) {
+        if (name == null) {
+            return null;
+        }
+        for (ForestHeader header : headers) {
+            if (header instanceof ForestSetCookieHeader) {
+                final ForestCookie cookie = ((ForestSetCookieHeader) header).getCookie();
+                if (cookie != null && name.equals(cookie.getName())) {
+                    return cookie;
+                }
+            }
+        }
+        return null;
+    }
+
+
     /**
      * 根据请求头名称获取请求头对象列表
      * @param name 请求头名称
      * @return 请求头对象列表，列表项为{@link ForestHeader}类实例
      */
     public List<ForestHeader> getHeaders(String name) {
-        List<ForestHeader> results = new ArrayList<>(2);
+        final List<ForestHeader> results = new ArrayList<>(2);
         for (ForestHeader header : headers) {
             if (header.getName().equalsIgnoreCase(name)) {
                 results.add(header);
@@ -242,7 +337,7 @@ public class ForestHeaderMap implements Map<String, String> {
      * @return 所有请求头的名称列表
      */
     public List<String> names() {
-        List<String> results = new ArrayList<>(headers.size());
+        final List<String> results = new ArrayList<>(headers.size());
         for (ForestHeader header : headers) {
             results.add(header.getName());
         }
@@ -254,7 +349,7 @@ public class ForestHeaderMap implements Map<String, String> {
      * @return 所有请求头的值列表
      */
     public List<String> getValues() {
-        List<String> results = new ArrayList<>(headers.size());
+        final List<String> results = new ArrayList<>(headers.size());
         for (ForestHeader header : headers) {
             results.add(header.getValue());
         }
@@ -275,23 +370,142 @@ public class ForestHeaderMap implements Map<String, String> {
      * @param value 请求头的值
      */
     public void addHeader(String name, String value) {
-        addHeader(new ForestHeader(name, value));
+        if ("Cookie".equalsIgnoreCase(name)) {
+            final ForestCookies cookies = ForestCookies.parse(value);
+            if (cookies.size() > 0) {
+                addCookies(cookies);
+            }
+        } else if ("Set-Cookie".equalsIgnoreCase(name)) {
+            final ForestCookie cookie = ForestCookie.parse(hasURL.url().toURLString(), value);
+            if (cookie != null) {
+                final ForestSetCookieHeader cookieHeader = ForestSetCookieHeader.fromSetCookie(hasURL, cookie);
+                addHeader(cookieHeader);
+            }
+        } else {
+            addHeader(new SimpleHeader(name, value));
+        }
+    }
+
+    public void addHeader(String name, Lazy<?> value) {
+        addHeader(new LazyHeader(this, name, value));
+    }
+
+    /**
+     * 添加Cookie头 (默认严格匹配)
+     *
+     * @param cookie {@link ForestCookie}对象实例
+     * @since 1.5.23
+     */
+    public void addCookie(ForestCookie cookie) {
+        addCookie(cookie, true);
+    }
+
+    /**
+     * 添加Cookie头
+     *
+     * @param cookie {@link ForestCookie}对象实例
+     * @param strict 是否严格匹配（只有匹配域名，以及没过期的 Cookie 才能添加）
+     * @since 1.5.25
+     */
+    public void addCookie(ForestCookie cookie, boolean strict) {
+        if (cookieHeader == null) {
+            final ForestCookieHeader cookieHeaderTmp = new ForestCookieHeader(hasURL);
+            if (cookieHeaderTmp.addCookie(cookie, strict)) {
+                cookieHeader = cookieHeaderTmp;
+                addHeader(cookieHeader);
+            }
+        } else {
+            cookieHeader.addCookie(cookie, strict);
+        }
+    }
+
+
+    /**
+     * 批量添加Cookie头 (默认严格匹配)
+     *
+     * @param cookies {@link ForestCookie}对象列表
+     * @since 1.5.23
+     */
+    public void addCookies(List<ForestCookie> cookies) {
+        for (ForestCookie cookie : cookies) {
+            addCookie(cookie);
+        }
+    }
+
+    /**
+     * 批量添加Cookie头
+     *
+     * @param cookies {@link ForestCookie}对象列表
+     * @param strict 是否严格匹配（只有匹配域名，以及没过期的 Cookie 才能添加）
+     * @since 1.5.25
+     */
+    public void addCookies(List<ForestCookie> cookies, boolean strict) {
+        for (ForestCookie cookie : cookies) {
+            addCookie(cookie, strict);
+        }
+    }
+
+
+    /**
+     * 批量添加Cookie头
+     *
+     * @param cookies {@link ForestCookies}对象实例
+     * @since 1.5.23
+     */
+    public void addCookies(ForestCookies cookies) {
+        addCookies(cookies.allCookies(), cookies.strict());
     }
 
     /**
      * 设置请求头
-     * 当前设置的请求头名称在本集合中已存在的情况下会覆盖原有同名请求头的值，负责便新增一个请求头
+     * 当前设置的请求头名称在本集合中已存在的情况下会覆盖原有同名请求头的值，否则便新增一个请求头
      * @param name 请求头名称
      * @param value 请求头的值
      */
     public void setHeader(String name, String value) {
-        ForestHeader header = getHeader(name);
+        final ForestHeader header = getHeader(name);
         if (header != null) {
-            header.setValue(value);
+            if (header instanceof SimpleHeader) {
+                ((SimpleHeader) header).setValue(value);
+            } else {
+                headers.remove(header);
+                addHeader(name, value);
+            }
         } else {
             addHeader(name, value);
         }
     }
+
+    public void setHeader(String name, Lazy<?> lazyValue) {
+        final ForestHeader header = getHeader(name);
+        if (header != null) {
+            if (header instanceof LazyHeader) {
+                ((LazyHeader) header).setValue(lazyValue);
+            } else {
+                headers.remove(header);
+                addHeader(name, lazyValue);
+            }
+        } else {
+            addHeader(name, lazyValue);
+        }
+
+    }
+
+    /**
+     * 通过 Map 批量设置请求头
+     *
+     * @param map {@link Map}对象
+     */
+    public void setHeader(Map map) {
+        if (map == null) {
+            return;
+        }
+        for (Object key : map.keySet()) {
+            final Object value = map.get(key);
+            setHeader(String.valueOf(key), String.valueOf(value));
+        }
+    }
+
 
     /**
      * 获取本请求头集合的迭代器对象
@@ -302,4 +516,19 @@ public class ForestHeaderMap implements Map<String, String> {
         return headers.iterator();
     }
 
+    /**
+     * 克隆Forest请求头Map
+     *
+     * @return 新的Forest请求头Map
+     */
+    public ForestHeaderMap clone(HasURL hasURL) {
+        final ForestHeaderMap newHeaderMap = new ForestHeaderMap(hasURL);
+        for (ForestHeader header : headers) {
+            newHeaderMap.addHeader(header.clone(newHeaderMap));
+        }
+        for (ForestCookie cookie : requestCookies) {
+            newHeaderMap.requestCookies.add(cookie);
+        }
+        return newHeaderMap;
+    }
 }

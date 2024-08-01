@@ -1,14 +1,16 @@
 package com.dtflys.forest.handler;
 
+import com.dtflys.forest.converter.ForestEncoder;
 import com.dtflys.forest.exceptions.ForestRetryException;
 import com.dtflys.forest.http.ForestCookies;
 import com.dtflys.forest.http.ForestRequest;
 import com.dtflys.forest.http.ForestResponse;
 import com.dtflys.forest.reflection.ForestMethod;
-import com.dtflys.forest.retryer.Retryer;
+import com.dtflys.forest.retryer.ForestRetryer;
 import com.dtflys.forest.utils.ForestProgress;
 
 import java.lang.reflect.Type;
+import java.util.concurrent.Future;
 
 
 /**
@@ -20,13 +22,13 @@ public interface LifeCycleHandler {
 
     Object handleSync(ForestRequest request, ForestResponse response);
 
-    Object handleSyncWithException(ForestRequest request, ForestResponse response, Exception ex);
+    Object handleSyncWithException(ForestRequest request, ForestResponse response, Throwable ex);
 
     Object handleResultType(ForestRequest request, ForestResponse response);
 
     Object handleResultType(ForestRequest request, ForestResponse response, Type resultType, Class resultClass);
 
-    Object handleSuccess(Object resultData, ForestRequest request, ForestResponse response);
+    void handleSuccess(Object resultData, ForestRequest request, ForestResponse response);
 
     void handleInvokeMethod(ForestRequest request, ForestMethod method, Object[] args);
 
@@ -34,7 +36,9 @@ public interface LifeCycleHandler {
 
     Object handleError(ForestRequest request, ForestResponse response, Throwable ex);
 
-    void handleTry(ForestRetryException ex, Retryer retryer) throws Throwable;
+    byte[] handleBodyEncode(ForestRequest request, ForestEncoder encoder, byte[] encodedData);
+
+    void handleCanceled(ForestRequest request, ForestResponse response);
 
     void handleProgress(ForestRequest request, ForestProgress progress);
 
@@ -44,8 +48,10 @@ public interface LifeCycleHandler {
 
     Object handleResult(Object resultData);
 
+    Object handleFuture(ForestRequest request, Future resultData);
+
     Type getOnSuccessClassGenericType();
 
-    Type getReturnType();
+    Type getResultType();
 
 }

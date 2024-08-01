@@ -36,14 +36,16 @@ import com.dtflys.forest.http.ForestResponse;
  * @author gongjun
  * @since 1.0.0
  */
+@FunctionalInterface
 public interface OnError {
 
     /**
      * 请求失败后调用该方法
+     *
      * @param ex 请求失败的异常对象
-     * @param request Forest请求对象
-     * @param response Forest响应对象
+     * @param req Forest请求对象
+     * @param res Forest响应对象
      */
-    void onError(ForestRuntimeException ex, ForestRequest request, ForestResponse response);
+    void onError(ForestRuntimeException ex, ForestRequest req, ForestResponse res);
 
 }

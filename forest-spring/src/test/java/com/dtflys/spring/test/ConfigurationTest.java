@@ -2,9 +2,7 @@ package com.dtflys.spring.test;
 
 import com.dtflys.forest.converter.json.ForestGsonConverter;
 import com.dtflys.forest.converter.json.ForestJsonConverter;
-import com.dtflys.forest.retryer.BackOffRetryer;
 import com.dtflys.forest.retryer.NoneRetryer;
-import com.dtflys.forest.ssl.SSLUtils;
 import com.dtflys.spring.test.logging.TestLogHandler;
 import junit.framework.TestCase;
 import com.dtflys.forest.config.ForestConfiguration;
@@ -22,7 +20,7 @@ public class ConfigurationTest extends TestCase {
         applicationContext = new ClassPathXmlApplicationContext(
                 new String[] { "classpath:configuration-test.xml" });
         ForestConfiguration forestConfiguration =
-                (ForestConfiguration) applicationContext.getBean("forestConfiguration");
+                (ForestConfiguration) applicationContext.getBean("forestConfiguration2");
         assertNotNull(forestConfiguration);
         assertNotNull(forestConfiguration.getBackend());
         assertEquals(forestConfiguration.getTimeout(), new Integer(30000));

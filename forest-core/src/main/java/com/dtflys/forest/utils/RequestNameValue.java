@@ -1,7 +1,5 @@
 package com.dtflys.forest.utils;
 
-import com.dtflys.forest.converter.json.ForestJsonConverter;
-
 import static com.dtflys.forest.mapping.MappingParameter.*;
 
 /**
@@ -12,13 +10,13 @@ import static com.dtflys.forest.mapping.MappingParameter.*;
  */
 public class RequestNameValue {
 
-    private String name;
+    protected String name;
 
-    private Object value;
+    protected Object value;
 
-    private final int target;
+    protected final int target;
 
-    private String defaultValue;
+    protected String defaultValue;
 
     /**
      * 子项Content-Type

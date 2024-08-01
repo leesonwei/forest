@@ -1,14 +1,16 @@
 package com.dtflys.forest.reflection;
 
+import com.dtflys.forest.converter.ForestEncoder;
 import com.dtflys.forest.exceptions.ForestRetryException;
 import com.dtflys.forest.handler.LifeCycleHandler;
 import com.dtflys.forest.http.ForestCookies;
 import com.dtflys.forest.http.ForestRequest;
 import com.dtflys.forest.http.ForestResponse;
-import com.dtflys.forest.retryer.Retryer;
+import com.dtflys.forest.retryer.ForestRetryer;
 import com.dtflys.forest.utils.ForestProgress;
 
 import java.lang.reflect.Type;
+import java.util.concurrent.Future;
 
 /**
  * @author gongjun[dt_flys@hotmail.com]
@@ -21,7 +23,7 @@ public class NoneLifeCycleHandler implements LifeCycleHandler {
     }
 
     @Override
-    public Object handleSyncWithException(ForestRequest request, ForestResponse response, Exception ex) {
+    public Object handleSyncWithException(ForestRequest request, ForestResponse response, Throwable ex) {
         return null;
     }
 
@@ -36,8 +38,7 @@ public class NoneLifeCycleHandler implements LifeCycleHandler {
     }
 
     @Override
-    public Object handleSuccess(Object resultData, ForestRequest request, ForestResponse response) {
-        return null;
+    public void handleSuccess(Object resultData, ForestRequest request, ForestResponse response) {
     }
 
     @Override
@@ -56,27 +57,33 @@ public class NoneLifeCycleHandler implements LifeCycleHandler {
     }
 
     @Override
-    public void handleTry(ForestRetryException ex, Retryer retryer) throws Throwable {
+    public byte[] handleBodyEncode(ForestRequest request, ForestEncoder encoder, byte[] encodedData) {
+        return encodedData;
+    }
 
+    @Override
+    public void handleCanceled(ForestRequest request, ForestResponse response) {
     }
 
     @Override
     public void handleProgress(ForestRequest request, ForestProgress progress) {
-
     }
 
     @Override
     public void handleLoadCookie(ForestRequest request, ForestCookies cookies) {
-
     }
 
     @Override
     public void handleSaveCookie(ForestRequest request, ForestCookies cookies) {
-
     }
 
     @Override
     public Object handleResult(Object resultData) {
+        return null;
+    }
+
+    @Override
+    public Object handleFuture(ForestRequest request, Future resultData) {
         return null;
     }
 
@@ -86,7 +93,7 @@ public class NoneLifeCycleHandler implements LifeCycleHandler {
     }
 
     @Override
-    public Type getReturnType() {
+    public Type getResultType() {
         return null;
     }
 }
